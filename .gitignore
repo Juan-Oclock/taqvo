@@ -1,0 +1,43 @@
+# macOS
+.DS_Store
+
+# Xcode
+build/
+DerivedData/
+*.xcuserdatad
+xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+!default.pbxuser
+!default.mode1v3
+!default.mode2v3
+!default.perspectivev3
+
+# Swift Package Manager
+/.build/
+
+# Carthage
+Carthage/Build/
+
+# CocoaPods
+Pods/
+
+# Archives
+*.xcarchive
+
+# App signing
+*.mobileprovision
+
+# Build logs and caches
+build/ModuleCache.noindex/
+build/CompilationCache.noindex/
+build/Index.noindex/
+build/Logs/
+build/Build/
+
+# Misc
+*.moved-aside
+*.swp
+*.lock

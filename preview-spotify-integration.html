@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Taqvo – Provider Toggle Preview</title>
+  <style>
+    body { background: #0f1216; color: #e6e6e6; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; }
+    .wrap { max-width: 640px; margin: 32px auto; padding: 16px; }
+    .card { background: rgba(0,0,0,0.12); border-radius: 16px; padding: 16px; margin-top: 16px; }
+    .toolbar { display:flex; gap:12px; align-items:center; justify-content:flex-end; }
+    .cta { background:#59ff7a; color:#111; border-radius:12px; padding:8px 14px; font-weight:600; border:none; cursor:pointer; }
+    .muted { color:#8aa19f; }
+    .pill { padding:4px 8px; border-radius:999px; background:#2a2f35; font-size:12px; }
+    h1 { margin-bottom: 8px; }
+    .controls { display:flex; gap:8px; }
+    .btn { background:#59ff7a; color:#111; border:none; padding:8px 12px; border-radius:10px; cursor:pointer; font-weight:600; }
+    .btn.stop { background:#59ff7a; opacity:0.9; }
+    .seg { display:inline-flex; border-radius:10px; background:#1b1f24; padding:4px; }
+    .seg button { background:transparent; color:#e6e6e6; border:none; padding:6px 10px; border-radius:8px; cursor:pointer; font-weight:600; }
+    .seg button.active { background:#2a2f35; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Live Activity — Music Controls</h1>
+    <p class="muted">This proxy mirrors the in-run controls gated by the chosen provider.</p>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:8px;">
+      <div class="seg" id="providerToggle">
+        <button data-provider="spotify" class="active">Spotify</button>
+        <button data-provider="apple">Apple Music</button>
+      </div>
+      <span class="muted" style="font-size:12px;">Preview toggle only</span>
+    </div>
+
+    <div class="card" id="cardSpotify">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <div>
+          <div class="pill">Spotify Connected</div>
+          <div style="margin-top:6px; font-weight:600;">The Fate of Ophelia • Taylor Swift</div>
+        </div>
+        <div class="toolbar">
+          <button class="cta">Choose Playlist</button>
+        </div>
+      </div>
+      <div class="controls" style="margin-top:12px;">
+        <button class="btn">Play</button>
+        <button class="btn stop">Stop</button>
+        <button class="btn">Playlist</button>
+      </div>
+    </div>
+
+    <div class="card" id="cardApple">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <div>
+          <div class="pill">Apple Music Connected</div>
+          <div style="margin-top:6px; font-weight:600;">Not Playing</div>
+        </div>
+        <div class="toolbar">
+          <button class="cta">Choose Playlist</button>
+        </div>
+      </div>
+      <div class="controls" style="margin-top:12px;">
+        <button class="btn">Play</button>
+        <button class="btn stop">Stop</button>
+        <button class="btn">Playlist</button>
+      </div>
+    </div>
+
+    <p class="muted" style="margin-top:16px;">
+      Notes: This proxy reflects a provider toggle in the app setup. Only the chosen provider’s controls show in the Live Activity.
+    </p>
+  </div>
+  <script>
+    const toggle = document.getElementById('providerToggle');
+    const btns = toggle.querySelectorAll('button');
+    const cardSpotify = document.getElementById('cardSpotify');
+    const cardApple = document.getElementById('cardApple');
+    function setProvider(p){
+      btns.forEach(b => b.classList.toggle('active', b.dataset.provider === p));
+      cardSpotify.style.display = (p === 'spotify') ? 'block' : 'none';
+      cardApple.style.display = (p === 'apple') ? 'block' : 'none';
+      try { localStorage.setItem('preferredMusicProvider', p); } catch {}
+    }
+    toggle.addEventListener('click', (e) => {
+      if(e.target.tagName === 'BUTTON') setProvider(e.target.dataset.provider);
+    });
+    const init = (localStorage.getItem('preferredMusicProvider') || 'spotify');
+    setProvider(init);
+  </script>
+</body>
+</html>
