@@ -33,7 +33,7 @@ struct LiveActivityView: View {
                 VStack(alignment: .leading) {
                     Text("Distance")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.taqvoAccentText)
                     Text(String(format: "%.2f km", vm.distanceMeters / 1000.0))
                         .font(.title3).bold()
                 }
@@ -41,7 +41,7 @@ struct LiveActivityView: View {
                 VStack(alignment: .trailing) {
                     Text("Duration")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.taqvoAccentText)
                     Text(timeString(vm.durationSeconds))
                         .font(.title3).bold()
                 }
@@ -52,11 +52,11 @@ struct LiveActivityView: View {
                     HStack {
                         Text("Goal")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.taqvoAccentText)
                         Spacer()
                         Text(vm.goalProgressText())
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.taqvoAccentText)
                             .lineLimit(1)
                     }
                     ProgressView(value: vm.goalProgressFraction())
@@ -64,22 +64,22 @@ struct LiveActivityView: View {
                     HStack {
                         Text("Remaining")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.taqvoAccentText)
                         Spacer()
                         Text(vm.goalRemainingEstimateText())
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.taqvoAccentText)
                             .lineLimit(1)
                     }
                     if vm.distanceGoalMeters != nil {
                         HStack {
                             Text("Est. Finish")
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.taqvoAccentText)
                             Spacer()
                             Text(vm.goalEstimatedFinishTimeText())
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.taqvoAccentText)
                                 .lineLimit(1)
                         }
                     }
@@ -92,17 +92,17 @@ struct LiveActivityView: View {
                 HStack {
                     Text("Music")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.taqvoAccentText)
                     Spacer()
                     if provider == .spotify, spotifyVM.isAuthorized {
                         Text("\(spotifyVM.currentTitle)\(spotifyVM.currentArtist.isEmpty ? "" : " • \(spotifyVM.currentArtist)")")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.taqvoAccentText)
                             .lineLimit(1)
                     } else if provider == .apple, musicVM.isAuthorized {
                         Text("\(musicVM.currentTitle)\(musicVM.currentArtist.isEmpty ? "" : " • \(musicVM.currentArtist)")")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.taqvoAccentText)
                             .lineLimit(1)
                     }
                 }
@@ -115,7 +115,7 @@ struct LiveActivityView: View {
                                 Task { await spotifyVM.togglePlayPause() }
                             } label: {
                                 Image(systemName: spotifyVM.isPlaying ? "pause.fill" : "play.fill")
-                                    .foregroundColor(.black)
+                                    .foregroundColor(.taqvoTextLight)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 10)
                                     .background(Color.taqvoCTA)
@@ -125,7 +125,7 @@ struct LiveActivityView: View {
                                 Task { await spotifyVM.stopPlayback() }
                             } label: {
                                 Image(systemName: "stop.fill")
-                                    .foregroundColor(.black)
+                                    .foregroundColor(.taqvoTextLight)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 10)
                                     .background(Color.taqvoCTA)
@@ -135,7 +135,7 @@ struct LiveActivityView: View {
                                 showSpotifyPicker = true
                             } label: {
                                 Text("Playlist")
-                                    .foregroundColor(.black)
+                                    .foregroundColor(.taqvoTextLight)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 10)
                                     .background(Color.taqvoCTA.opacity(0.8))
@@ -147,7 +147,7 @@ struct LiveActivityView: View {
                             spotifyVM.connect()
                         } label: {
                             Text("Connect Spotify")
-                                .foregroundColor(.black)
+                                .foregroundColor(.taqvoTextLight)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
                                 .background(Color.taqvoCTA)
@@ -161,7 +161,7 @@ struct LiveActivityView: View {
                                 musicVM.togglePlayPause()
                             } label: {
                                 Image(systemName: musicVM.isPlaying ? "pause.fill" : "play.fill")
-                                    .foregroundColor(.black)
+                                    .foregroundColor(.taqvoTextLight)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 10)
                                     .background(Color.taqvoCTA)
@@ -171,7 +171,7 @@ struct LiveActivityView: View {
                                 musicVM.stopPlayback()
                             } label: {
                                 Image(systemName: "stop.fill")
-                                    .foregroundColor(.black)
+                                    .foregroundColor(.taqvoTextLight)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 10)
                                     .background(Color.taqvoCTA)
@@ -181,7 +181,7 @@ struct LiveActivityView: View {
                                 showPlaylistPicker = true
                             } label: {
                                 Text("Playlist")
-                                    .foregroundColor(.black)
+                                    .foregroundColor(.taqvoTextLight)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 10)
                                     .background(Color.taqvoCTA.opacity(0.8))
@@ -193,7 +193,7 @@ struct LiveActivityView: View {
                             musicVM.requestAuthorization()
                         } label: {
                             Text("Connect Apple Music")
-                                .foregroundColor(.black)
+                                .foregroundColor(.taqvoTextLight)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
                                 .background(Color.taqvoCTA.opacity(0.85))
@@ -209,7 +209,7 @@ struct LiveActivityView: View {
                         vm.pause()
                     } label: {
                         Text("Pause")
-                            .foregroundColor(.black)
+                            .foregroundColor(.taqvoTextLight)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
                             .background(Color.orange)
@@ -220,7 +220,7 @@ struct LiveActivityView: View {
                         vm.resume()
                     } label: {
                         Text("Resume")
-                            .foregroundColor(.black)
+                            .foregroundColor(.taqvoTextLight)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
                             .background(Color.green)
@@ -242,7 +242,7 @@ struct LiveActivityView: View {
                     showSummary = true
                 } label: {
                     Text("Stop")
-                        .foregroundColor(.white)
+                        .foregroundColor(.taqvoTextDark)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(Color.red)

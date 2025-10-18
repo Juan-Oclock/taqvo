@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Taqvo Color Update Preview</title>
+  <style>
+    :root {
+      --bg: #4F4F4F;              /* Primary Dark Background */
+      --primary-text-dark: #F6F8FA; /* Primary Text (Dark Mode) */
+      --primary-text-light: #111111;/* Primary Text (Light Mode) */
+      --accent-text: #C5C5C5;     /* Accent Text */
+      --cta: #A8FF60;             /* CTA / Highlight */
+      --card: rgba(0,0,0,0.08);
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0; background: var(--bg); color: var(--primary-text-dark);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    }
+    .wrap { max-width: 900px; margin: 32px auto; padding: 16px; }
+    h1, h2 { margin: 0 0 8px; color: var(--primary-text-dark); }
+    p { margin: 4px 0; }
+    .accent { color: var(--accent-text); }
+    .card { background: var(--card); border-radius: 16px; padding: 16px; margin: 16px 0; }
+    .row { display: flex; gap: 12px; align-items: center; }
+    .spacer { flex: 1; }
+    .btn { background: var(--cta); color: var(--primary-text-light); border: 0; padding: 10px 16px; border-radius: 12px; font-weight: 600; }
+    .btn-contrast-dark { background: #e74c3c; color: var(--primary-text-dark); padding: 10px 16px; border-radius: 12px; font-weight: 600; }
+    .pill { background: var(--cta); color: var(--primary-text-light); padding: 6px 10px; border-radius: 999px; font-size: 12px; }
+    .metric { flex: 1; }
+    .metric .label { font-size: 12px; color: var(--accent-text); }
+    .metric .value { font-size: 18px; font-weight: 700; color: var(--primary-text-dark); }
+    .split { display: flex; justify-content: space-between; padding: 6px 0; }
+    .split .km { color: var(--accent-text); }
+    .note { color: var(--primary-text-dark); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Taqvo Brand Text Colors</h1>
+    <p class="accent">Primary Dark Background with Primary/Accent text applied.</p>
+
+    <div class="card">
+      <h2>Onboarding CTA</h2>
+      <p class="accent">Accent copy explaining permissions.</p>
+      <button class="btn">Enable Required Permissions</button>
+    </div>
+
+    <div class="card">
+      <h2>Live Activity Metrics</h2>
+      <div class="row">
+        <div class="metric">
+          <div class="label">Distance</div>
+          <div class="value">5.20 km</div>
+        </div>
+        <div class="spacer"></div>
+        <div class="metric" style="text-align:right;">
+          <div class="label">Duration</div>
+          <div class="value">00:42:15</div>
+        </div>
+      </div>
+      <div class="row" style="margin-top: 8px;">
+        <span class="label accent">Goal</span>
+        <div class="spacer"></div>
+        <span class="label accent">42%</span>
+      </div>
+      <div class="row" style="margin-top: 8px;">
+        <button class="btn">Playlist</button>
+        <button class="btn-contrast-dark">Stop</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Activity Detail</h2>
+      <div class="row">
+        <span style="color: var(--primary-text-dark); font-weight:600;">5.20 km</span>
+        <div class="spacer"></div>
+        <span style="color: var(--primary-text-dark); font-weight:600;">00:42:15</span>
+        <div class="spacer"></div>
+        <span class="accent">5:15/km</span>
+      </div>
+      <p class="note">Felt great today. Nice weather and steady pace.</p>
+      <div class="split">
+        <span class="km">Km 1</span>
+        <span style="color: var(--primary-text-dark);">5:08</span>
+      </div>
+      <div class="split">
+        <span class="km">Km 2</span>
+        <span style="color: var(--primary-text-dark);">5:12</span>
+      </div>
+      <p class="accent" style="font-size:12px;">Oct 17, 7:42 PM</p>
+    </div>
+
+    <div class="card">
+      <h2>Post-Run Summary</h2>
+      <p class="accent">Add a photo and note, then share.</p>
+      <div class="row">
+        <button class="btn">Add a photo</button>
+        <div class="spacer"></div>
+        <button class="btn">Share to Feed</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

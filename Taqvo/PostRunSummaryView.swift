@@ -62,7 +62,7 @@ struct PostRunSummaryView: View {
                         Text(selectedPhoto == nil ? "Add a photo" : "Change photo")
                     }
                     .font(.headline)
-                    .foregroundColor(.black)
+                    .foregroundColor(.taqvoTextLight)
                     .padding()
                     .frame(maxWidth: .infinity)
                     .background(Color.white.opacity(0.85))
@@ -117,7 +117,7 @@ struct PostRunSummaryView: View {
                 } label: {
                     Text("Share to Feed")
                         .font(.headline)
-                        .foregroundColor(.black)
+                        .foregroundColor(.taqvoTextLight)
                         .padding()
                         .frame(maxWidth: .infinity)
                         .background(Color.taqvoCTA)

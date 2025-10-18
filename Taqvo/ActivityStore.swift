@@ -14,6 +14,13 @@ struct Coordinate: Codable {
     let longitude: Double
 }
 
+struct ActivityComment: Identifiable, Codable {
+    let id: UUID
+    let author: String
+    let text: String
+    let date: Date
+}
+
 struct FeedActivity: Identifiable, Codable {
     let id: UUID
     let distanceMeters: Double
@@ -24,6 +31,71 @@ struct FeedActivity: Identifiable, Codable {
     let snapshotPNG: Data?
     let note: String?
     let photoPNG: Data?
+    var likeCount: Int
+    var isLiked: Bool
+    var comments: [ActivityComment]
+
+    enum CodingKeys: String, CodingKey {
+        case id, distanceMeters, durationSeconds, route, startDate, endDate, snapshotPNG, note, photoPNG, likeCount, isLiked, comments
+    }
+
+    init(id: UUID,
+         distanceMeters: Double,
+         durationSeconds: Double,
+         route: [Coordinate],
+         startDate: Date,
+         endDate: Date,
+         snapshotPNG: Data?,
+         note: String?,
+         photoPNG: Data?,
+         likeCount: Int = 0,
+         isLiked: Bool = false,
+         comments: [ActivityComment] = []) {
+        self.id = id
+        self.distanceMeters = distanceMeters
+        self.durationSeconds = durationSeconds
+        self.route = route
+        self.startDate = startDate
+        self.endDate = endDate
+        self.snapshotPNG = snapshotPNG
+        self.note = note
+        self.photoPNG = photoPNG
+        self.likeCount = likeCount
+        self.isLiked = isLiked
+        self.comments = comments
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        distanceMeters = try c.decode(Double.self, forKey: .distanceMeters)
+        durationSeconds = try c.decode(Double.self, forKey: .durationSeconds)
+        route = try c.decode([Coordinate].self, forKey: .route)
+        startDate = try c.decode(Date.self, forKey: .startDate)
+        endDate = try c.decode(Date.self, forKey: .endDate)
+        snapshotPNG = try c.decodeIfPresent(Data.self, forKey: .snapshotPNG)
+        note = try c.decodeIfPresent(String.self, forKey: .note)
+        photoPNG = try c.decodeIfPresent(Data.self, forKey: .photoPNG)
+        likeCount = try c.decodeIfPresent(Int.self, forKey: .likeCount) ?? 0
+        isLiked = try c.decodeIfPresent(Bool.self, forKey: .isLiked) ?? false
+        comments = try c.decodeIfPresent([ActivityComment].self, forKey: .comments) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(distanceMeters, forKey: .distanceMeters)
+        try c.encode(durationSeconds, forKey: .durationSeconds)
+        try c.encode(route, forKey: .route)
+        try c.encode(startDate, forKey: .startDate)
+        try c.encode(endDate, forKey: .endDate)
+        try c.encodeIfPresent(snapshotPNG, forKey: .snapshotPNG)
+        try c.encodeIfPresent(note, forKey: .note)
+        try c.encodeIfPresent(photoPNG, forKey: .photoPNG)
+        try c.encode(likeCount, forKey: .likeCount)
+        try c.encode(isLiked, forKey: .isLiked)
+        try c.encode(comments, forKey: .comments)
+    }
 }
 
 final class ActivityStore: ObservableObject {
@@ -49,7 +121,10 @@ final class ActivityStore: ObservableObject {
             endDate: summary.endDate,
             snapshotPNG: snapshot?.pngData(),
             note: note,
-            photoPNG: photo?.pngData()
+            photoPNG: photo?.pngData(),
+            likeCount: 0,
+            isLiked: false,
+            comments: []
         )
         activities.insert(activity, at: 0)
         save()
@@ -90,6 +165,28 @@ final class ActivityStore: ObservableObject {
     // Delete an activity and persist changes
     func delete(activity: FeedActivity) {
         activities.removeAll { $0.id == activity.id }
+        save()
+    }
+
+    // Like/unlike an activity and persist
+    func toggleLike(activityID: UUID) {
+        guard let idx = activities.firstIndex(where: { $0.id == activityID }) else { return }
+        var a = activities[idx]
+        a.isLiked.toggle()
+        a.likeCount = max(0, a.likeCount + (a.isLiked ? 1 : -1))
+        activities[idx] = a
+        save()
+    }
+
+    // Add a comment to an activity and persist
+    func addComment(activityID: UUID, text: String, author: String = "You") {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard let idx = activities.firstIndex(where: { $0.id == activityID }) else { return }
+        var a = activities[idx]
+        let comment = ActivityComment(id: UUID(), author: author, text: trimmed, date: Date())
+        a.comments.append(comment)
+        activities[idx] = a
         save()
     }
 }

@@ -51,7 +51,7 @@ struct ActivityDetailView: View {
                     VStack(alignment: .leading) {
                         Text("Distance")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.taqvoAccentText)
                         Text(String(format: "%.2f km", activity.distanceMeters/1000.0))
                             .font(.title3).bold()
                     }
@@ -59,7 +59,7 @@ struct ActivityDetailView: View {
                     VStack(alignment: .trailing) {
                         Text("Duration")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.taqvoAccentText)
                         Text(ActivityTrackingViewModel.formattedDuration(activity.durationSeconds))
                             .font(.title3).bold()
                     }
@@ -68,7 +68,7 @@ struct ActivityDetailView: View {
                 HStack {
                     Text("Avg Pace")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.taqvoAccentText)
                     Spacer()
                     Text(paceString)
                         .font(.headline)
@@ -81,7 +81,7 @@ struct ActivityDetailView: View {
                     ForEach(Array(splits.enumerated()), id: \.offset) { idx, seconds in
                         HStack {
                             Text("Km \(idx + 1)")
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.taqvoAccentText)
                             Spacer()
                             Text(ActivityTrackingViewModel.formattedDuration(seconds))
                                 .font(.body).monospacedDigit()
@@ -90,13 +90,13 @@ struct ActivityDetailView: View {
                     }
                     if splits.isEmpty {
                         Text("No splits available")
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.taqvoAccentText)
                             .font(.caption)
                     }
                 }
 
                 Text(activity.endDate.formatted(date: .abbreviated, time: .shortened))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.taqvoAccentText)
                     .font(.caption)
             }
             .padding()

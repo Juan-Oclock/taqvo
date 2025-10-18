@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Taqvo – Feed Interactions Preview</title>
+  <style>
+    :root {
+      --bg: #0f0f10;
+      --card: rgba(0,0,0,0.08);
+      --text: #e6e6e6;
+      --accent: #9aa0a6;
+      --cta: #2AD3C9;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, Roboto, Arial, sans-serif; margin: 0; }
+    .wrap { max-width: 680px; margin: 24px auto; padding: 0 16px; }
+    h1 { font-size: 22px; margin: 0 0 12px; }
+    .card { background: var(--card); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+    .row { display:flex; align-items:center; gap: 16px; }
+    .sp { flex: 1; }
+    .muted { color: var(--accent); font-size: 12px; }
+    button { background: none; border: none; color: var(--text); cursor: pointer; display:flex; align-items:center; gap:6px; }
+    button.like.liked { color: var(--cta); }
+    .composer { display:flex; gap:8px; margin-top: 8px; }
+    .composer input { flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid #333; background: #141416; color: var(--text); }
+    .composer button { background: var(--cta); color: #000; padding: 8px 12px; border-radius: 8px; }
+    .comment { padding: 8px; border-radius: 8px; background: #141416; margin-top: 6px; }
+    .comment .meta { display:flex; justify-content: space-between; color: var(--accent); font-size: 11px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Feed Interactions</h1>
+    <div class="card">
+      <div class="row">
+        <strong>5.2 km</strong>
+        <div class="sp"></div>
+        <strong>00:27:05</strong>
+        <div class="sp"></div>
+        <span class="muted">5:12 min/km</span>
+      </div>
+      <p class="muted">Oct 17, 10:14 AM</p>
+      <div class="row" style="gap:12px;">
+        <button class="like" id="likeBtn">
+          <span id="heart">♡</span>
+          <span id="likeCount">0</span>
+        </button>
+        <button id="commentBtn">💬 <span id="commentCount">0</span></button>
+        <button onclick="share()">⇪ Share</button>
+      </div>
+      <div id="comments"></div>
+      <div class="composer">
+        <input aria-label="comment" id="commentInput" placeholder="Add a comment…" />
+        <button onclick="sendComment()">Send</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    let liked = false;
+    let likeCount = 0;
+    let comments = [];
+
+    document.getElementById('likeBtn').onclick = () => {
+      liked = !liked;
+      likeCount += liked ? 1 : -1;
+      document.getElementById('likeCount').textContent = likeCount;
+      document.getElementById('heart').textContent = liked ? '❤' : '♡';
+      document.getElementById('likeBtn').classList.toggle('liked', liked);
+    };
+
+    function sendComment() {
+      const input = document.getElementById('commentInput');
+      const text = input.value.trim();
+      if (!text) return;
+      comments.push({ author: 'You', text, date: new Date() });
+      input.value = '';
+      renderComments();
+    }
+
+    function renderComments() {
+      const wrap = document.getElementById('comments');
+      wrap.innerHTML = '';
+      document.getElementById('commentCount').textContent = comments.length;
+      comments.forEach(c => {
+        const d = document.createElement('div');
+        d.className = 'comment';
+        d.innerHTML = `<div class="meta"><span>${c.author}</span><span>${c.date.toLocaleString()}</span></div><div>${escapeHtml(c.text)}</div>`;
+        wrap.appendChild(d);
+      });
+    }
+
+    function share() {
+      alert('This would invoke iOS ShareLink with a summary file.');
+    }
+
+    function escapeHtml(str){
+      return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m]));
+    }
+  </script>
+</body>
+</html>

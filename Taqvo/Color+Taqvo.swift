@@ -33,8 +33,8 @@ extension Color {
     }
 
     static let taqvoBackgroundDark = Color(hex: "#4F4F4F")
-    static let taqvoTextDark = Color(hex: "#767676")
+    static let taqvoTextDark = Color(hex: "#F6F8FA")
     static let taqvoTextLight = Color(hex: "#111111")
-    static let taqvoAccentText = Color(hex: "#6E6E6E")
+    static let taqvoAccentText = Color(hex: "#C5C5C5")
     static let taqvoCTA = Color(hex: "#A8FF60")
 }

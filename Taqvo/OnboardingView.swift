@@ -75,7 +75,7 @@ struct OnboardingView: View {
                 } label: {
                     Text(appState.allRequiredPermissionsGranted ? "Continue" : "Enable Required Permissions")
                         .font(.headline)
-                        .foregroundColor(.black)
+                        .foregroundColor(.taqvoTextLight)
                         .padding()
                         .frame(maxWidth: .infinity)
                         .background(Color.taqvoCTA)
@@ -137,7 +137,7 @@ struct OnboardingView: View {
             Button(action: action) {
                 Text(authorized ? "Enabled" : "Enable")
                     .font(.subheadline)
-                    .foregroundColor(.black)
+                    .foregroundColor(.taqvoTextLight)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(Color.taqvoCTA)

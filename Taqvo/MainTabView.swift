@@ -136,7 +136,7 @@ struct ActivityView: View {
                 } label: {
                     Text("Start")
                         .font(.headline)
-                        .foregroundColor(.black)
+                        .foregroundColor(.taqvoTextLight)
                         .padding()
                         .frame(maxWidth: .infinity)
                         .background(Color.taqvoCTA)
@@ -198,10 +198,19 @@ struct FeedView: View {
 
 struct ActivityRow: View {
     let activity: FeedActivity
+    @EnvironmentObject var store: ActivityStore
 
     private var paceString: String {
         ActivityTrackingViewModel.formattedPace(distanceMeters: activity.distanceMeters,
                                                durationSeconds: activity.durationSeconds)
+    }
+
+    private var shareURL: URL {
+        let text = "Ran \(String(format: "%.2f", activity.distanceMeters/1000.0)) km in \(ActivityTrackingViewModel.formattedDuration(activity.durationSeconds)) on Taqvo"
+        let filename = "taqvo-activity-\(Int(activity.endDate.timeIntervalSince1970)).txt"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        try? text.data(using: .utf8)?.write(to: url)
+        return url
     }
 
     var body: some View {
@@ -243,6 +252,33 @@ struct ActivityRow: View {
             Text(activity.endDate.formatted(date: .abbreviated, time: .shortened))
                 .foregroundColor(.taqvoAccentText)
                 .font(.caption)
+
+            HStack(spacing: 16) {
+                Button {
+                    store.toggleLike(activityID: activity.id)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: activity.isLiked ? "heart.fill" : "heart")
+                        Text("\(activity.likeCount)")
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(activity.isLiked ? .taqvoCTA : .taqvoTextDark)
+
+                NavigationLink(destination: CommentsView(activityID: activity.id)) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bubble.right")
+                        Text("\(activity.comments.count)")
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.taqvoTextDark)
+
+                ShareLink(item: shareURL) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .tint(.taqvoCTA)
+            }
         }
         .padding(.vertical, 8)
     }
