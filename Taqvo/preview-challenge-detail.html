@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Taqvo – Challenge Detail Preview</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --card: #181b22;
+      --text: #e6edf3;
+      --muted: #9aa4b2;
+      --cta: #4cc2ff;
+      --accent: #6d7786;
+      --success: #38d38f;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; background: var(--bg); color: var(--text); }
+    .container { max-width: 960px; margin: 24px auto; padding: 0 16px; }
+    .card { background: var(--card); border: 1px solid #202432; border-radius: 14px; padding: 16px; box-shadow: 0 1px 0 #0b0d11; }
+    .row { display: flex; align-items: center; gap: 12px; }
+    .space { flex: 1; }
+    .title { font-size: 1.25rem; font-weight: 600; }
+    .muted { color: var(--muted); }
+    .btn { padding: 8px 12px; border-radius: 10px; border: 1px solid #2a3344; background: #0f3450; color: var(--text); cursor: pointer; }
+    .btn.cta { background: var(--cta); color: #041724; border-color: #3aa0d1; }
+    .btn.ghost { background: transparent; color: var(--text); }
+    .progress-wrap { margin-top: 12px; }
+    .progress-label { font-size: 0.925rem; }
+    .progress { height: 10px; background: #0f1520; border-radius: 8px; overflow: hidden; border: 1px solid #263246; }
+    .progress > .bar { height: 100%; background: var(--success); width: 0%; transition: width .4s ease; }
+    .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+    .barcol { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .bar { width: 14px; min-width: 10px; background: var(--cta); border-radius: 4px; transition: height .3s ease; }
+    .day { font-size: 11px; color: var(--accent); }
+    .list { display: flex; flex-direction: column; gap: 8px; }
+    .list-row { display: flex; gap: 8px; align-items: center; }
+    .spacer { height: 4px; }
+    .section-title { font-weight: 600; font-size: 1rem; }
+    .header { margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="row header">
+        <div class="title" id="challengeTitle">7-Day Sprint</div>
+        <div class="space"></div>
+        <button id="joinBtn" class="btn cta">Join</button>
+      </div>
+      <div class="muted" id="challengeDetail">Run every day this week. Rack up kilometers and streak!</div>
+      <div class="row" style="margin-top:8px">
+        <div class="muted" id="rangeText">Oct 5 – Oct 11</div>
+        <div class="space"></div>
+        <div class="muted">Goal: <span id="goalKm">21</span> km</div>
+      </div>
+
+      <div class="progress-wrap">
+        <div class="progress-label">Progress: <span id="progressLabel">0 / 21 km</span></div>
+        <div class="progress"><div id="progressBar" class="bar"></div></div>
+      </div>
+
+      <div class="spacer"></div>
+      <div class="section-title">Per-day contribution</div>
+      <div class="grid" id="barGrid" style="height:160px; align-items:flex-end; margin-top:6px"></div>
+
+      <div class="spacer"></div>
+      <div class="list" id="list"></div>
+    </div>
+  </div>
+
+  <script>
+    // Demo data aligns conceptually with SwiftUI view
+    const state = {
+      joined: false,
+      goalKm: 21,
+      days: [
+        { day: 'Mon', km: 2.5 },
+        { day: 'Tue', km: 0.0 },
+        { day: 'Wed', km: 4.1 },
+        { day: 'Thu', km: 3.0 },
+        { day: 'Fri', km: 5.0 },
+        { day: 'Sat', km: 4.4 },
+        { day: 'Sun', km: 2.2 },
+      ]
+    };
+
+    const goalKmEl = document.getElementById('goalKm');
+    const progressLabelEl = document.getElementById('progressLabel');
+    const progressBarEl = document.getElementById('progressBar');
+    const barGridEl = document.getElementById('barGrid');
+    const listEl = document.getElementById('list');
+    const joinBtn = document.getElementById('joinBtn');
+
+    function render() {
+      goalKmEl.textContent = state.goalKm.toFixed(0);
+      const totalKm = state.days.reduce((s,d)=>s+d.km, 0);
+      progressLabelEl.textContent = `${totalKm.toFixed(1)} / ${state.goalKm.toFixed(0)} km`;
+      const pct = Math.min(100, (totalKm / state.goalKm) * 100);
+      progressBarEl.style.width = `${pct}%`;
+
+      const maxKm = Math.max(1, ...state.days.map(d=>d.km));
+      barGridEl.innerHTML = '';
+      state.days.forEach(d => {
+        const col = document.createElement('div');
+        col.className = 'barcol';
+        const bar = document.createElement('div');
+        bar.className = 'bar';
+        bar.style.height = `${Math.max(10, (d.km / maxKm) * 160)}px`;
+        const label = document.createElement('div');
+        label.className = 'day';
+        label.textContent = d.day;
+        col.appendChild(bar);
+        col.appendChild(label);
+        barGridEl.appendChild(col);
+      });
+
+      listEl.innerHTML = '';
+      state.days.forEach(d => {
+        const row = document.createElement('div');
+        row.className = 'list-row';
+        const left = document.createElement('div');
+        left.className = 'muted';
+        left.textContent = d.day;
+        const space = document.createElement('div');
+        space.className = 'space';
+        const right = document.createElement('div');
+        right.textContent = `${d.km.toFixed(2)} km`;
+        row.appendChild(left);
+        row.appendChild(space);
+        row.appendChild(right);
+        listEl.appendChild(row);
+      });
+
+      joinBtn.textContent = state.joined ? 'Leave' : 'Join';
+      joinBtn.className = state.joined ? 'btn ghost' : 'btn cta';
+    }
+
+    joinBtn.addEventListener('click', () => {
+      state.joined = !state.joined;
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

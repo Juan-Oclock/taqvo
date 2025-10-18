@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Taqvo – Community Preview</title>
+  <style>
+    body { background:#0b0d0f; color:#e6e6e6; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Helvetica, Arial, sans-serif; }
+    .wrap { max-width: 820px; margin: 24px auto; padding: 0 16px; }
+    .header { display:flex; align-items:center; justify-content:space-between; }
+    .cta { background:#00e0a4; color:#111; border:none; padding:8px 12px; border-radius:10px; font-weight:600; }
+    .card { background:#111417; border:1px solid #1f2328; border-radius:14px; padding:14px; margin-top:12px; }
+    .caption { color:#9aa0a6; font-size:12px; }
+    .progress { height:8px; background:#22262b; border-radius:999px; overflow:hidden; }
+    .bar { height:100%; background:#00e0a4; width:50%; }
+    .row { display:flex; align-items:center; gap:12px; }
+    .spacer { flex:1; }
+    .rank { color:#9aa0a6; width:28px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h2 style="margin:0">Community</h2>
+      <button class="cta" onclick="reload()">Reload</button>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:12px">
+        <h3 style="margin:0">Challenges</h3>
+        <span class="caption">Demo data</span>
+      </div>
+      <div style="margin-top:10px">
+        <div class="card">
+          <div class="row">
+            <strong>7-Day Sprint</strong>
+            <div class="spacer"></div>
+            <button class="cta">Join</button>
+          </div>
+          <div class="caption" style="margin-top:6px">Run 10 km this week</div>
+          <div class="row caption" style="margin-top:6px">
+            <span>Goal 10 km</span>
+            <div class="spacer"></div>
+            <span>7 days</span>
+          </div>
+          <div class="progress" style="margin-top:8px"><div class="bar" style="width:40%"></div></div>
+          <div class="caption" style="margin-top:6px">4.0/10.0 km</div>
+        </div>
+        <div class="card">
+          <div class="row">
+            <strong>October Mileage</strong>
+            <div class="spacer"></div>
+            <button class="cta">Join</button>
+          </div>
+          <div class="caption" style="margin-top:6px">Log 50 km in October</div>
+          <div class="row caption" style="margin-top:6px">
+            <span>Goal 50 km</span>
+            <div class="spacer"></div>
+            <span>30 days</span>
+          </div>
+          <div class="progress" style="margin-top:8px"><div class="bar" style="width:20%"></div></div>
+          <div class="caption" style="margin-top:6px">10.0/50.0 km</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:18px">
+      <h3 style="margin:0">Leaderboard</h3>
+      <div style="margin-top:10px">
+        <div class="row">
+          <span class="rank">#1</span>
+          <span>Alex</span>
+          <div class="spacer"></div>
+          <strong>42.0 km</strong>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <span class="rank">#2</span>
+          <span>Sam</span>
+          <div class="spacer"></div>
+          <strong>38.0 km</strong>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <span class="rank">#3</span>
+          <span>Taylor</span>
+          <div class="spacer"></div>
+          <strong>35.0 km</strong>
+        </div>
+      </div>
+      <p class="caption" style="margin-top:12px">Visual proxy only; use the simulator to test the real UI.</p>
+    </div>
+  </div>
+  <script>
+    function reload(){ location.reload(); }
+  </script>
+</body>
+</html>

@@ -106,6 +106,76 @@ struct WeeklySummary: Identifiable {
         ActivityTrackingViewModel.formattedPace(distanceMeters: totalDistanceMeters, durationSeconds: totalDurationSeconds)
     }
 }
+struct DailySummary: Identifiable {
+    let id: Date
+    let dayStart: Date
+    var totalDistanceMeters: Double
+    var totalDurationSeconds: Double
+    var runCount: Int
+    var longestRunMeters: Double
+    var longestRunDurationSeconds: Double
+
+    var averagePaceString: String {
+        ActivityTrackingViewModel.formattedPace(distanceMeters: totalDistanceMeters, durationSeconds: totalDurationSeconds)
+    }
+}
+
+struct MonthlySummary: Identifiable {
+    let id: Date
+    let monthStart: Date
+    var totalDistanceMeters: Double
+    var totalDurationSeconds: Double
+    var runCount: Int
+    var longestRunMeters: Double
+    var longestRunDurationSeconds: Double
+
+    var averagePaceString: String {
+        ActivityTrackingViewModel.formattedPace(distanceMeters: totalDistanceMeters, durationSeconds: totalDurationSeconds)
+    }
+}
+
+extension ActivityStore {
+    func dailySummaries(using calendar: Calendar = Calendar(identifier: .iso8601)) -> [DailySummary] {
+        guard !activities.isEmpty else { return [] }
+        var bucket: [Date: DailySummary] = [:]
+
+        for a in activities {
+            let day = calendar.startOfDay(for: a.endDate)
+            var summary = bucket[day] ?? DailySummary(id: day, dayStart: day, totalDistanceMeters: 0, totalDurationSeconds: 0, runCount: 0, longestRunMeters: 0, longestRunDurationSeconds: 0)
+            summary.totalDistanceMeters += a.distanceMeters
+            summary.totalDurationSeconds += a.durationSeconds
+            summary.runCount += 1
+            if a.distanceMeters > summary.longestRunMeters {
+                summary.longestRunMeters = a.distanceMeters
+                summary.longestRunDurationSeconds = a.durationSeconds
+            }
+            bucket[day] = summary
+        }
+
+        return bucket.values.sorted { $0.dayStart > $1.dayStart }
+    }
+
+    func monthlySummaries(using calendar: Calendar = Calendar(identifier: .iso8601)) -> [MonthlySummary] {
+        guard !activities.isEmpty else { return [] }
+        var bucket: [Date: MonthlySummary] = [:]
+
+        for a in activities {
+            let comps = calendar.dateComponents([.year, .month], from: a.endDate)
+            guard let startOfMonth = calendar.date(from: comps) else { continue }
+            var summary = bucket[startOfMonth] ?? MonthlySummary(id: startOfMonth, monthStart: startOfMonth, totalDistanceMeters: 0, totalDurationSeconds: 0, runCount: 0, longestRunMeters: 0, longestRunDurationSeconds: 0)
+            summary.totalDistanceMeters += a.distanceMeters
+            summary.totalDurationSeconds += a.durationSeconds
+            summary.runCount += 1
+            if a.distanceMeters > summary.longestRunMeters {
+                summary.longestRunMeters = a.distanceMeters
+                summary.longestRunDurationSeconds = a.durationSeconds
+            }
+            bucket[startOfMonth] = summary
+        }
+
+        return bucket.values.sorted { $0.monthStart > $1.monthStart }
+    }
+}
 extension ActivityStore {
     func weeklySummaries(using calendar: Calendar = Calendar(identifier: .iso8601)) -> [WeeklySummary] {
         guard !activities.isEmpty else { return [] }

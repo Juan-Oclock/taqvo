@@ -24,6 +24,10 @@ Carthage/Build/
 # CocoaPods
 Pods/
 
+# Private secrets/backlog
+.private/
+.private/integration-backlog.md
+
 # Archives
 *.xcarchive
 

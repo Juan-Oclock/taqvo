@@ -278,7 +278,7 @@ struct LiveActivityView: View {
             }
             provider = MusicProvider(rawValue: storedProviderString) ?? .spotify
         }
-        .onChange(of: vm.goalReached) { reached in
+        .onChange(of: vm.goalReached) { _, reached in
             if reached {
                 if vm.autoEndOnGoal {
                     summary = vm.summary()

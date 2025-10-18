@@ -269,33 +269,26 @@ final class HealthSyncService: ObservableObject {
         }
         guard let workout = workout else { return false }
          
-         if let distType = HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning) {
-             let sample = HKQuantitySample(type: distType,
-                                           quantity: distanceQty,
-                                           start: summary.startDate,
-                                           end: summary.endDate)
-             _ = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-                 store.save(sample) { ok, _ in cont.resume(returning: ok) }
-             }
-         }
+        // Distance samples added to the workout builder are persisted with the workout.
+        // Avoid saving a duplicate standalone distance sample to improve reliability.
          
-         if summary.route.count >= 2 {
-             let builder = HKWorkoutRouteBuilder(healthStore: store, device: nil)
-             let locs = Self.locations(from: summary.route, start: summary.startDate, end: summary.endDate)
-             let inserted = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-                 builder.insertRouteData(locs) { ok, _ in cont.resume(returning: ok) }
-             }
-             guard inserted else { return true }
-         
-             let finished = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-                 builder.finishRoute(with: workout, metadata: nil) { _, error in
-                     cont.resume(returning: (error == nil))
-                 }
-             }
-             return finished
-         }
+        if summary.route.count >= 2 {
+            let builder = HKWorkoutRouteBuilder(healthStore: store, device: nil)
+            let locs = Self.locations(from: summary.route, start: summary.startDate, end: summary.endDate)
+            let inserted = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+                builder.insertRouteData(locs) { ok, _ in cont.resume(returning: ok) }
+            }
+            guard inserted else { return true }
+        
+            let finished = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+                builder.finishRoute(with: workout, metadata: nil) { _, error in
+                    cont.resume(returning: (error == nil))
+                }
+            }
+            return finished
+        }
  
-         return true
+        return true
     }
 
     private static func locations(from coords: [CLLocationCoordinate2D], start: Date, end: Date) -> [CLLocation] {
