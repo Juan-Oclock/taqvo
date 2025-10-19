@@ -10,7 +10,7 @@ import CoreLocation
 import MapKit
 import UIKit
 
-enum ActivityKind: String, Codable { case walk, jog, run, ride }
+enum ActivityKind: String, Codable, Hashable { case walk, jog, run, ride }
 
 struct RouteSample {
     let latitude: Double

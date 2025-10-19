@@ -92,120 +92,166 @@ struct ActivityView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
-                Text("Pre-Run Setup")
-                    .font(.title2)
-                    .foregroundColor(.taqvoTextDark)
-
-                Picker("Type", selection: $activityType) {
-                    ForEach(ActivityType.allCases, id: \.self) { t in
-                        Text(t.rawValue.capitalized)
+            GeometryReader { geometry in
+                VStack(spacing: 0) {
+                    // Header
+                    VStack(spacing: 24) {
+                        Text("Activity")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        
+                        Text("Pre-Run Setup")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundColor(.white.opacity(0.8))
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                }
-                .pickerStyle(.segmented)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 20)
+                    
+                    Spacer()
+                    
+                    // Main content
+                    VStack(spacing: 32) {
+                        // Activity type selection
+                        VStack(spacing: 16) {
+                            Picker("Type", selection: $activityType) {
+                                ForEach(ActivityType.allCases, id: \.self) { t in
+                                    Text(t.rawValue.capitalized)
+                                        .foregroundColor(.white)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .background(Color.white.opacity(0.1))
+                            .cornerRadius(12)
+                        }
 
-                // Music connect section (moved from Community -> Activity)
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Music")
-                            .font(.caption)
-                            .foregroundColor(.taqvoAccentText)
-                        Spacer()
-                    }
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Image(systemName: "music.note.list")
-                                .foregroundColor(.taqvoCTA)
-                            Text("Apple Music")
-                                .foregroundColor(.taqvoTextDark)
-                            Spacer()
-                            if musicVM.isAuthorized {
-                                Button("Choose Playlist") { showPlaylistPicker = true }
-                                    .foregroundColor(.taqvoTextLight)
-                                    .padding(.horizontal, 12)
+                        // Music section
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Music")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.white.opacity(0.7))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            VStack(spacing: 12) {
+                                HStack(spacing: 16) {
+                                    Image(systemName: "music.note.list")
+                                        .foregroundColor(.taqvoCTA)
+                                        .font(.system(size: 18))
+                                    Text("Apple Music")
+                                        .foregroundColor(.white)
+                                        .font(.system(size: 16, weight: .medium))
+                                    Spacer()
+                                    if musicVM.isAuthorized {
+                                        Button("Choose") { showPlaylistPicker = true }
+                                            .font(.system(size: 14, weight: .medium))
+                                            .foregroundColor(.taqvoCTA)
+                                    }
+                                }
+                                .padding(.vertical, 8)
+                                
+                                HStack(spacing: 16) {
+                                    Image(systemName: "music.note")
+                                        .foregroundColor(.taqvoCTA)
+                                        .font(.system(size: 18))
+                                    Text("Spotify")
+                                        .foregroundColor(.white)
+                                        .font(.system(size: 16, weight: .medium))
+                                    Spacer()
+                                    if spotifyVM.isAuthorized {
+                                        Button("Choose") { showSpotifyPicker = true }
+                                            .font(.system(size: 14, weight: .medium))
+                                            .foregroundColor(.taqvoCTA)
+                                    }
+                                }
+                                .padding(.vertical, 8)
                             }
                         }
-                        HStack {
-                            Image(systemName: "music.note")
-                                .foregroundColor(.taqvoCTA)
-                            Text("Spotify")
-                                .foregroundColor(.taqvoTextDark)
-                            Spacer()
-                            if spotifyVM.isAuthorized {
-                                Button("Choose Playlist") { showSpotifyPicker = true }
-                                    .foregroundColor(.taqvoTextLight)
-                                    .padding(.horizontal, 12)
+
+                        // Goal selection
+                        VStack(spacing: 16) {
+                            Picker("Goal", selection: $goal) {
+                                ForEach(Goal.allCases, id: \.self) { g in
+                                    Text(g.rawValue.capitalized)
+                                        .foregroundColor(.white)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .background(Color.white.opacity(0.1))
+                            .cornerRadius(12)
+                            
+                            // Goal details
+                            if goal == .distance {
+                                VStack(spacing: 12) {
+                                    HStack {
+                                        Text("Distance")
+                                            .foregroundColor(.white.opacity(0.7))
+                                        Spacer()
+                                        Text(String(format: "%.1f km", distanceKilometers))
+                                            .foregroundColor(.white)
+                                            .font(.system(size: 16, weight: .medium))
+                                    }
+                                    Slider(value: $distanceKilometers, in: 1...42.2, step: 0.5)
+                                        .tint(.taqvoCTA)
+                                }
+                            } else if goal == .time {
+                                VStack(spacing: 12) {
+                                    HStack {
+                                        Text("Time")
+                                            .foregroundColor(.white.opacity(0.7))
+                                        Spacer()
+                                        Text("\(Int(timeMinutes)) min")
+                                            .foregroundColor(.white)
+                                            .font(.system(size: 16, weight: .medium))
+                                    }
+                                    Slider(value: Binding(get: { Double(timeMinutes) }, set: { timeMinutes = Int($0) }), in: 10...180, step: 5)
+                                        .tint(.taqvoCTA)
+                                }
                             }
                         }
                     }
+                    .padding(.horizontal, 32)
+                    
+                    Spacer()
+                    
+                    // Start button
+                    Button {
+                        // Map selected type into tracking kind
+                        switch activityType {
+                        case .walk: trackingVM.setActivityKind(.walk)
+                        case .jog: trackingVM.setActivityKind(.jog)
+                        case .run: trackingVM.setActivityKind(.run)
+                        case .ride: trackingVM.setActivityKind(.ride)
+                        }
+
+                        switch goal {
+                        case .none:
+                            trackingVM.setTimeGoal(nil)
+                            trackingVM.setDistanceGoal(nil)
+                        case .time:
+                            trackingVM.setTimeGoal(Double(timeMinutes * 60))
+                            trackingVM.setDistanceGoal(nil)
+                        case .distance:
+                            trackingVM.setDistanceGoal(distanceKilometers * 1000.0)
+                            trackingVM.setTimeGoal(nil)
+                        }
+                        trackingVM.autoEndOnGoal = storedAutoEndOnGoal
+                        navigateToLive = true
+                    } label: {
+                        Text("Start")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(Color.taqvoCTA)
+                            .cornerRadius(28)
+                    }
+                    .padding(.horizontal, 32)
+                    .padding(.bottom, 40)
                 }
-
-                Picker("Goal", selection: $goal) {
-                    ForEach(Goal.allCases, id: \.self) { g in
-                        Text(g.rawValue.capitalized)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                if goal == .distance {
-                    HStack {
-                        Text("Distance")
-                        Spacer()
-                        Text(String(format: "%.1f km", distanceKilometers))
-                    }
-                    Slider(value: $distanceKilometers, in: 1...42.2, step: 0.5)
-                } else if goal == .time {
-                    HStack {
-                        Text("Time")
-                        Spacer()
-                        Text("\(Int(timeMinutes)) min")
-                    }
-                    Slider(value: Binding(get: { Double(timeMinutes) }, set: { timeMinutes = Int($0) }), in: 10...180, step: 5)
-                }
-
-                Button {
-                    // Map selected type into tracking kind
-                    switch activityType {
-                    case .walk: trackingVM.setActivityKind(.walk)
-                    case .jog: trackingVM.setActivityKind(.jog)
-                    case .run: trackingVM.setActivityKind(.run)
-                    case .ride: trackingVM.setActivityKind(.ride)
-                    }
-
-                    switch goal {
-                    case .none:
-                        trackingVM.setTimeGoal(nil)
-                        trackingVM.setDistanceGoal(nil)
-                    case .time:
-                        trackingVM.setTimeGoal(Double(timeMinutes * 60))
-                        trackingVM.setDistanceGoal(nil)
-                    case .distance:
-                        trackingVM.setDistanceGoal(distanceKilometers * 1000.0)
-                        trackingVM.setTimeGoal(nil)
-                    }
-                    trackingVM.autoEndOnGoal = storedAutoEndOnGoal
-                    navigateToLive = true
-                } label: {
-                    Text("Start")
-                        .font(.headline)
-                        .foregroundColor(.taqvoTextLight)
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(Color.taqvoCTA)
-                        .cornerRadius(16)
-                }
-                .padding(.top, 8)
-
-                // Removed duplicate NavigationLink(isActive:) to avoid immediate pop
-                // Navigation is handled by .navigationDestination below
-                // NavigationLink(destination: LiveActivityView().environmentObject(trackingVM), isActive: $navigateToLive) {
-                //     EmptyView()
-                // }
             }
-            .padding()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.taqvoBackgroundDark)
-            .navigationTitle("Activity")
+            .background(Color.taqvoOnboardingBG.ignoresSafeArea(.all))
+            .navigationBarHidden(true)
             .onAppear {
                 // Hydrate baseline from storage
                 goal = Goal(rawValue: storedGoalType) ?? .none
@@ -287,11 +333,25 @@ struct SupportView: View {
 
 struct FeedView: View {
     @EnvironmentObject var store: ActivityStore
+    @State private var selectedActivity: FeedActivity?
+    
+    private var visibleActivities: [FeedActivity] {
+        let currentUserId = SupabaseAuthManager.shared.userId ?? ""
+        return store.activities.filter { activity in
+            // Show user's own activities regardless of privacy setting
+            if activity.userId == currentUserId {
+                return true
+            }
+            
+            // Show only public activities from other users
+            return activity.visibility == .publicFeed
+        }
+    }
 
     var body: some View {
         NavigationStack {
             Group {
-                if store.activities.isEmpty {
+                if visibleActivities.isEmpty {
                     VStack(spacing: 12) {
                         Text("No activities yet")
                             .font(.title3)
@@ -304,10 +364,10 @@ struct FeedView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List {
-                        ForEach(store.activities) { a in
-                            NavigationLink(destination: ActivityDetailView(activity: a)) {
-                                ActivityRow(activity: a)
-                            }
+                        ForEach(visibleActivities) { a in
+                            ActivityRow(activity: a, onTapActivity: {
+                                selectedActivity = a
+                            })
                             .listRowBackground(Color.black.opacity(0.08))
                         }
                     }
@@ -316,13 +376,19 @@ struct FeedView: View {
             }
             .background(Color.taqvoBackgroundDark)
             .navigationTitle("Feed")
+            .navigationDestination(item: $selectedActivity) { activity in
+                ActivityDetailView(activity: activity)
+            }
         }
     }
 }
 
 struct ActivityRow: View {
     let activity: FeedActivity
+    let onTapActivity: (() -> Void)?
     @EnvironmentObject var store: ActivityStore
+    @State private var showComments: Bool = false
+    @State private var commentText: String = ""
 
     private var paceString: String {
         ActivityTrackingViewModel.formattedPace(distanceMeters: activity.distanceMeters,
@@ -336,6 +402,10 @@ struct ActivityRow: View {
         case .run: return "Ran"
         case .ride: return "Rode"
         }
+    }
+    
+    private var comments: [ActivityComment] {
+        activity.comments.sorted { $0.date < $1.date }
     }
 
     private func compositeShareImageURL() -> URL {
@@ -405,97 +475,103 @@ struct ActivityRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Headline uses custom title if available, otherwise verb + distance
-            if let t = activity.title?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
-                Text(t).font(.headline)
-            } else {
-                Text("\(verb) \(String(format: "%.2f km", activity.distanceMeters/1000.0))").font(.headline)
-            }
-            if let data = activity.photoPNG, let img = UIImage(data: data) {
-                Image(uiImage: img)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .cornerRadius(12)
-            } else if let data = activity.snapshotPNG, let img = UIImage(data: data) {
-                Image(uiImage: img)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .cornerRadius(12)
-            } else {
-                MapRouteView(route: ActivityStore.clCoordinates(from: activity.route))
-                    .frame(height: 180)
-                    .cornerRadius(12)
-            }
+            // Main content area with tap gesture for navigation
+            VStack(alignment: .leading, spacing: 8) {
+                // Headline uses custom title if available, otherwise verb + distance
+                if let t = activity.title?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
+                    Text(t).font(.headline)
+                } else {
+                    Text("\(verb) \(String(format: "%.2f km", activity.distanceMeters/1000.0))").font(.headline)
+                }
+                if let data = activity.photoPNG, let img = UIImage(data: data) {
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .cornerRadius(12)
+                } else if let data = activity.snapshotPNG, let img = UIImage(data: data) {
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .cornerRadius(12)
+                } else {
+                    MapRouteView(route: ActivityStore.clCoordinates(from: activity.route))
+                        .frame(height: 180)
+                        .cornerRadius(12)
+                }
 
-            HStack {
-                Text(String(format: "%.2f km", activity.distanceMeters/1000.0))
-                    .foregroundColor(.taqvoTextDark)
-                    .font(.headline)
-                Spacer()
-                Text(ActivityTrackingViewModel.formattedDuration(activity.durationSeconds))
-                    .foregroundColor(.taqvoTextDark)
-                    .font(.headline)
-                Spacer()
-                Text(paceString)
-                    .foregroundColor(.taqvoAccentText)
-                    .font(.subheadline)
-            }
-            HStack {
-                Text(verb)
-                    .foregroundColor(.taqvoAccentText)
-                    .font(.caption)
-                Spacer()
-                Text(String(format: "%.0f kcal", activity.caloriesKilocalories))
-                    .foregroundColor(.taqvoAccentText)
-                    .font(.caption)
-            }
-            if let title = activity.challengeTitle, !title.isEmpty {
-                HStack(spacing: 8) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "flag.2.crossed")
-                            .font(.caption2)
-                        Text(title)
-                            .font(.caption)
-                    }
-                    .foregroundColor(.taqvoCTA)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.taqvoCTA.opacity(0.12))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.taqvoCTA, lineWidth: 1)
-                    )
-                    .cornerRadius(8)
-
-                    if let isPublic = activity.challengeIsPublic {
+                HStack {
+                    Text(String(format: "%.2f km", activity.distanceMeters/1000.0))
+                        .foregroundColor(.taqvoTextDark)
+                        .font(.headline)
+                    Spacer()
+                    Text(ActivityTrackingViewModel.formattedDuration(activity.durationSeconds))
+                        .foregroundColor(.taqvoTextDark)
+                        .font(.headline)
+                    Spacer()
+                    Text(paceString)
+                        .foregroundColor(.taqvoAccentText)
+                        .font(.subheadline)
+                }
+                HStack {
+                    Text(verb)
+                        .foregroundColor(.taqvoAccentText)
+                        .font(.caption)
+                    Spacer()
+                    Text(String(format: "%.0f kcal", activity.caloriesKilocalories))
+                        .foregroundColor(.taqvoAccentText)
+                        .font(.caption)
+                }
+                if let title = activity.challengeTitle, !title.isEmpty {
+                    HStack(spacing: 8) {
                         HStack(spacing: 4) {
-                            Image(systemName: isPublic ? "globe" : "lock.fill")
+                            Image(systemName: "flag.2.crossed")
                                 .font(.caption2)
-                            Text(isPublic ? "Public" : "Private")
+                            Text(title)
                                 .font(.caption)
                         }
-                        .foregroundColor(isPublic ? .taqvoCTA : .taqvoAccentText)
+                        .foregroundColor(.taqvoCTA)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background((isPublic ? Color.taqvoCTA : Color.taqvoAccentText).opacity(0.12))
+                        .background(Color.taqvoCTA.opacity(0.12))
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
-                                .stroke(isPublic ? Color.taqvoCTA : Color.taqvoAccentText, lineWidth: 1)
+                                .stroke(Color.taqvoCTA, lineWidth: 1)
                         )
                         .cornerRadius(8)
+
+                        if let isPublic = activity.challengeIsPublic {
+                            HStack(spacing: 4) {
+                                Image(systemName: isPublic ? "globe" : "lock.fill")
+                                    .font(.caption2)
+                                Text(isPublic ? "Public" : "Private")
+                                    .font(.caption)
+                            }
+                            .foregroundColor(isPublic ? .taqvoCTA : .taqvoAccentText)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background((isPublic ? Color.taqvoCTA : Color.taqvoAccentText).opacity(0.12))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(isPublic ? Color.taqvoCTA : Color.taqvoAccentText, lineWidth: 1)
+                            )
+                            .cornerRadius(8)
+                        }
+                        Spacer()
                     }
-                    Spacer()
                 }
+                if let note = activity.note, !note.isEmpty {
+                    Text(note)
+                        .foregroundColor(.taqvoTextDark)
+                        .font(.body)
+                        .lineLimit(3)
+                }
+                Text(activity.endDate.formatted(date: .abbreviated, time: .shortened))
+                    .foregroundColor(.taqvoAccentText)
+                    .font(.caption)
             }
-            if let note = activity.note, !note.isEmpty {
-                Text(note)
-                    .foregroundColor(.taqvoTextDark)
-                    .font(.body)
-                    .lineLimit(3)
+            .onTapGesture {
+                onTapActivity?()
             }
-            Text(activity.endDate.formatted(date: .abbreviated, time: .shortened))
-                .foregroundColor(.taqvoAccentText)
-                .font(.caption)
 
             HStack(spacing: 16) {
                 Button {
@@ -509,7 +585,9 @@ struct ActivityRow: View {
                 .buttonStyle(.plain)
                 .foregroundColor(activity.isLiked ? .taqvoCTA : .taqvoTextDark)
 
-                NavigationLink(destination: CommentsView(activityID: activity.id)) {
+                Button {
+                    showComments.toggle()
+                } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "bubble.right")
                         Text("\(activity.comments.count)")
@@ -522,6 +600,69 @@ struct ActivityRow: View {
                     Image(systemName: "square.and.arrow.up")
                 }
                 .tint(.taqvoCTA)
+            }
+            
+            // Inline comments section
+            if showComments {
+                VStack(alignment: .leading, spacing: 8) {
+                    Divider()
+                        .background(Color.taqvoAccentText.opacity(0.3))
+                    
+                    // Existing comments
+                    if comments.isEmpty {
+                        HStack {
+                            Image(systemName: "bubble.right")
+                                .foregroundColor(.taqvoAccentText)
+                                .font(.caption)
+                            Text("No comments yet")
+                                .foregroundColor(.taqvoAccentText)
+                                .font(.caption)
+                        }
+                        .padding(.vertical, 4)
+                    } else {
+                        ForEach(comments) { comment in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(comment.author)
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.taqvoTextDark)
+                                    Spacer()
+                                    Text(comment.date.formatted(date: .abbreviated, time: .shortened))
+                                        .font(.caption2)
+                                        .foregroundColor(.taqvoAccentText)
+                                }
+                                Text(comment.text)
+                                    .font(.caption)
+                                    .foregroundColor(.taqvoTextDark)
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                    
+                    // Comment composer
+                    HStack(spacing: 8) {
+                        TextField("Add a comment…", text: $commentText)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption)
+                        Button("Send") {
+                            let trimmed = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !trimmed.isEmpty else { return }
+                            commentText = ""
+                            store.addComment(activityID: activity.id, text: trimmed)
+                        }
+                        .disabled(commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray : Color.taqvoCTA)
+                        .cornerRadius(8)
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(.top, 8)
             }
         }
         .padding(.vertical, 8)

@@ -10,20 +10,51 @@ import SwiftUI
 import MapKit
 import CoreLocation
 
-struct Coordinate: Codable {
+enum PostVisibility: String, CaseIterable, Codable, Hashable {
+    case publicFeed = "public"
+    case friends = "friends"
+    case privateOnly = "private"
+    
+    var displayName: String {
+        switch self {
+        case .publicFeed: return "Public"
+        case .friends: return "Friends"
+        case .privateOnly: return "Private"
+        }
+    }
+    
+    var iconName: String {
+        switch self {
+        case .publicFeed: return "globe"
+        case .friends: return "person.2"
+        case .privateOnly: return "lock"
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .publicFeed: return "Visible to everyone on the public feed"
+        case .friends: return "Visible to your friends only"
+        case .privateOnly: return "Only visible to you"
+        }
+    }
+}
+
+struct Coordinate: Codable, Hashable {
     let latitude: Double
     let longitude: Double
 }
 
-struct ActivityComment: Identifiable, Codable {
+struct ActivityComment: Identifiable, Codable, Hashable {
     let id: UUID
     let author: String
     let text: String
     let date: Date
 }
 
-struct FeedActivity: Identifiable, Codable {
+struct FeedActivity: Identifiable, Codable, Hashable {
     let id: UUID
+    let userId: String // User who created this activity
     let distanceMeters: Double
     let durationSeconds: Double
     let route: [Coordinate]
@@ -46,12 +77,15 @@ struct FeedActivity: Identifiable, Codable {
     // Persisted metrics (optional)
     let stepsCount: Int?
     let elevationGainMeters: Double?
+    // Privacy settings
+    let visibility: PostVisibility
 
     enum CodingKeys: String, CodingKey {
-        case id, distanceMeters, durationSeconds, route, startDate, endDate, snapshotPNG, note, photoPNG, title, likeCount, isLiked, comments, kind, caloriesKilocalories, averageHeartRateBPM, splitsSeconds, challengeTitle, challengeIsPublic, stepsCount, elevationGainMeters
+        case id, userId, distanceMeters, durationSeconds, route, startDate, endDate, snapshotPNG, note, photoPNG, title, likeCount, isLiked, comments, kind, caloriesKilocalories, averageHeartRateBPM, splitsSeconds, challengeTitle, challengeIsPublic, stepsCount, elevationGainMeters, visibility
     }
 
     init(id: UUID,
+         userId: String,
          distanceMeters: Double,
          durationSeconds: Double,
          route: [Coordinate],
@@ -71,8 +105,10 @@ struct FeedActivity: Identifiable, Codable {
          challengeTitle: String? = nil,
          challengeIsPublic: Bool? = nil,
          stepsCount: Int? = nil,
-         elevationGainMeters: Double? = nil) {
+         elevationGainMeters: Double? = nil,
+         visibility: PostVisibility = .privateOnly) {
         self.id = id
+        self.userId = userId
         self.distanceMeters = distanceMeters
         self.durationSeconds = durationSeconds
         self.route = route
@@ -93,11 +129,13 @@ struct FeedActivity: Identifiable, Codable {
         self.challengeIsPublic = challengeIsPublic
         self.stepsCount = stepsCount
         self.elevationGainMeters = elevationGainMeters
+        self.visibility = visibility
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
+        userId = try c.decodeIfPresent(String.self, forKey: .userId) ?? ""
         distanceMeters = try c.decode(Double.self, forKey: .distanceMeters)
         durationSeconds = try c.decode(Double.self, forKey: .durationSeconds)
         route = try c.decode([Coordinate].self, forKey: .route)
@@ -118,11 +156,13 @@ struct FeedActivity: Identifiable, Codable {
         challengeIsPublic = try c.decodeIfPresent(Bool.self, forKey: .challengeIsPublic)
         stepsCount = try c.decodeIfPresent(Int.self, forKey: .stepsCount)
         elevationGainMeters = try c.decodeIfPresent(Double.self, forKey: .elevationGainMeters)
+        visibility = try c.decodeIfPresent(PostVisibility.self, forKey: .visibility) ?? .privateOnly
     }
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id)
+        try c.encode(userId, forKey: .userId)
         try c.encode(distanceMeters, forKey: .distanceMeters)
         try c.encode(durationSeconds, forKey: .durationSeconds)
         try c.encode(route, forKey: .route)
@@ -142,6 +182,7 @@ struct FeedActivity: Identifiable, Codable {
         try c.encodeIfPresent(challengeIsPublic, forKey: .challengeIsPublic)
         try c.encodeIfPresent(stepsCount, forKey: .stepsCount)
         try c.encodeIfPresent(elevationGainMeters, forKey: .elevationGainMeters)
+        try c.encode(visibility, forKey: .visibility)
     }
 }
 
@@ -150,10 +191,12 @@ final class ActivityStore: ObservableObject {
 
     private let fileURL: URL
     private let queue = DispatchQueue(label: "ActivityStoreQueue")
+    private var supabaseDataSource: SupabaseCommunityDataSource?
 
     init() {
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        fileURL = dir.appendingPathComponent("activities.json")
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        fileURL = documentsPath.appendingPathComponent("activities.json")
+        self.supabaseDataSource = SupabaseCommunityDataSource.makeFromInfoPlist(authManager: SupabaseAuthManager.shared)
         load()
     }
 
@@ -208,11 +251,13 @@ final class ActivityStore: ObservableObject {
         return result
     }
 
-    func add(summary: ActivitySummary, snapshot: UIImage?, note: String? = nil, photo: UIImage? = nil, avgHeartRateBPM: Double? = nil, title: String? = nil) {
+    @MainActor
+    func add(summary: ActivitySummary, snapshot: UIImage?, note: String? = nil, photo: UIImage? = nil, avgHeartRateBPM: Double? = nil, title: String? = nil, visibility: PostVisibility = .privateOnly) {
         let coords = summary.route.map { Coordinate(latitude: $0.latitude, longitude: $0.longitude) }
         let splits = ActivityStore.computeSplits(from: summary.routeSamples, totalDistanceMeters: summary.distanceMeters, totalDurationSeconds: summary.durationSeconds)
         let activity = FeedActivity(
             id: UUID(),
+            userId: SupabaseAuthManager.shared.userId ?? "",
             distanceMeters: summary.distanceMeters,
             durationSeconds: summary.durationSeconds,
             route: coords,
@@ -232,10 +277,26 @@ final class ActivityStore: ObservableObject {
             challengeTitle: summary.linkedChallengeTitle,
             challengeIsPublic: summary.linkedChallengeIsPublic,
             stepsCount: summary.stepsCount,
-            elevationGainMeters: summary.elevationGainMeters
+            elevationGainMeters: summary.elevationGainMeters,
+            visibility: visibility
         )
         activities.insert(activity, at: 0)
         save()
+        
+        // Sync to Supabase if available and user is authenticated
+        if let supabase = supabaseDataSource {
+            Task {
+                do {
+                    // Check authentication status in async context
+                    if await SupabaseAuthManager.shared.isAuthenticated {
+                        try await supabase.uploadActivity(activity)
+                    }
+                } catch {
+                    print("Failed to sync activity to Supabase: \(error)")
+                    // Activity is still saved locally, sync will be retried later
+                }
+            }
+        }
     }
 
     func save() {
@@ -269,7 +330,15 @@ final class ActivityStore: ObservableObject {
         coords.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
     }
 
+    @MainActor
     func delete(activity: FeedActivity) {
+        // Security check: Only allow deletion if user owns the activity
+        guard let currentUserId = SupabaseAuthManager.shared.userId,
+              activity.userId == currentUserId else {
+            print("Unauthorized delete attempt: User \(SupabaseAuthManager.shared.userId ?? "unknown") tried to delete activity owned by \(activity.userId)")
+            return
+        }
+        
         activities.removeAll { $0.id == activity.id }
         save()
     }
@@ -288,12 +357,17 @@ final class ActivityStore: ObservableObject {
         save()
     }
 
-    func addComment(activityID: UUID, text: String, author: String = "You") {
+    @MainActor
+    func addComment(activityID: UUID, text: String, author: String? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         guard let idx = activities.firstIndex(where: { $0.id == activityID }) else { return }
         var a = activities[idx]
-        let comment = ActivityComment(id: UUID(), author: author, text: trimmed, date: Date())
+        
+        // Use provided author, or fall back to user email, or "You" as last resort
+        let commentAuthor = author ?? SupabaseAuthManager.shared.userEmail ?? "You"
+        
+        let comment = ActivityComment(id: UUID(), author: commentAuthor, text: trimmed, date: Date())
         a.comments.append(comment)
         activities[idx] = a
         save()
