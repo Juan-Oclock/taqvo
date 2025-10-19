@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Taqvo Supabase Test Flow</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #0f1114; color: #eaeaea; margin: 0; }
+    .container { max-width: 800px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: 24px; margin: 0 0 12px; }
+    h2 { font-size: 18px; margin: 24px 0 8px; }
+    p, li { color: #a9b1bd; }
+    code { background: #1a1d21; padding: 2px 6px; border-radius: 4px; }
+    .card { background: #121417; border: 1px solid #23262a; border-radius: 12px; padding: 16px; margin: 12px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Taqvo — Supabase Auth & Sync Test Flow</h1>
+
+    <div class="card">
+      <h2>1) Sign In with Apple</h2>
+      <ul>
+        <li>Open <code>Profile</code> tab.</li>
+        <li>Tap <strong>Sign in with Apple</strong> under <em>Account</em>.</li>
+        <li>On success, the status shows a checkmark and queued writes flush.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>2) Join a Challenge</h2>
+      <ul>
+        <li>Open <code>Community</code> tab.</li>
+        <li>Tap <strong>Join</strong> on a challenge, then <strong>Reload</strong>.</li>
+        <li>Verify a row appears in <code>challenge_participants</code> with your <code>user_id</code>.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>3) Record or Import Runs</h2>
+      <ul>
+        <li>Record a run via <code>Activity</code> or import past workouts in <code>Profile → Privacy & Permissions</code>.</li>
+        <li>Ensure daily summaries exist in <code>Insights</code> (charts render).</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>4) Sync Contributions & Refresh Leaderboard</h2>
+      <ul>
+        <li>Open <code>Insights</code> tab.</li>
+        <li>Tap the <strong>Sync</strong> button to call <code>community.refreshProgress(from:)</code>.</li>
+        <li>Verify per-day rows in <code>challenge_day_contributions</code> and leaderboard ranks update.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Notes</h2>
+      <ul>
+        <li>Writes use your Supabase <code>access_token</code> for RLS; reads can use <code>anon</code>.</li>
+        <li>Offline queue persists join/contribution ops and flushes after auth is available.</li>
+        <li>Ensure <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code> exist in <code>Info.plist</code>.</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

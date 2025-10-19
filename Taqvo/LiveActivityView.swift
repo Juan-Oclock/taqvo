@@ -11,6 +11,7 @@ import MapKit
 struct LiveActivityView: View {
     @EnvironmentObject var vm: ActivityTrackingViewModel
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var appState: AppState
 
     @State private var showSummary: Bool = false
     @State private var summary: ActivitySummary?
@@ -20,11 +21,24 @@ struct LiveActivityView: View {
     @AppStorage("autoStopMusicOnEnd") private var autoStopMusicOnEnd: Bool = false
     @StateObject private var spotifyVM = SpotifyViewModel()
     @State private var showSpotifyPicker: Bool = false
-@AppStorage("preferredMusicProvider") private var storedProviderString: String = MusicProvider.spotify.rawValue
-@State private var provider: MusicProvider = .spotify
+    @AppStorage("preferredMusicProvider") private var storedProviderString: String = MusicProvider.spotify.rawValue
+    @State private var provider: MusicProvider = .spotify
 
     var body: some View {
         VStack(spacing: 12) {
+            if let challenge = appState.linkedChallengeTitle, !challenge.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "flag.2.crossed")
+                        .foregroundColor(.taqvoCTA)
+                    Text(challenge)
+                        .font(.subheadline)
+                        .foregroundColor(.taqvoTextDark)
+                        .lineLimit(1)
+                    Spacer()
+                }
+                .padding(.horizontal, 2)
+            }
+
             MapRouteView(route: vm.routeCoordinates)
                 .frame(height: 260)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -252,12 +266,15 @@ struct LiveActivityView: View {
             }
         }
         .padding()
+        .navigationTitle(appState.linkedChallengeTitle ?? "Live Activity")
         .sheet(isPresented: $showSummary, onDismiss: {
             // After summary, leave live view
+            appState.linkedChallengeTitle = nil
+            appState.linkedChallengeIsPublic = nil
             dismiss()
         }) {
             // Always render summary content; fall back to current vm state if needed
-            PostRunSummaryView(summary: summary ?? vm.summary())
+            PostRunSummaryView(summary: (summary ?? vm.summary()).withChallenge(title: appState.linkedChallengeTitle, isPublic: appState.linkedChallengeIsPublic))
         }
         .sheet(isPresented: $showPlaylistPicker) {
             PlaylistPickerView(musicVM: musicVM)
@@ -265,6 +282,7 @@ struct LiveActivityView: View {
         .sheet(isPresented: $showSpotifyPicker) {
             SpotifyPlaylistPickerView(spotifyVM: spotifyVM)
         }
+        // Updated onAppear to auto-detect active provider and persist it
         .onAppear {
             if !vm.isRunning && !vm.hasSession {
                 vm.start()
@@ -273,10 +291,38 @@ struct LiveActivityView: View {
                 musicVM.startObserving()
                 musicVM.loadPlaylists()
             }
-            if spotifyVM.isAuthorized {
-                Task { await spotifyVM.refreshState() }
+            Task {
+                if spotifyVM.isAuthorized {
+                    await spotifyVM.refreshState()
+                }
+                await MainActor.run {
+                    var chosen = MusicProvider(rawValue: storedProviderString) ?? .spotify
+                    if musicVM.isAuthorized && musicVM.isPlaying {
+                        chosen = .apple
+                    } else if spotifyVM.isAuthorized && spotifyVM.isPlaying {
+                        chosen = .spotify
+                    } else if chosen == .spotify && !spotifyVM.isAuthorized && musicVM.isAuthorized {
+                        chosen = .apple
+                    } else if chosen == .apple && !musicVM.isAuthorized && spotifyVM.isAuthorized {
+                        chosen = .spotify
+                    }
+                    provider = chosen
+                    storedProviderString = chosen.rawValue
+                }
             }
-            provider = MusicProvider(rawValue: storedProviderString) ?? .spotify
+        }
+        // Switch provider automatically if playback starts on either service
+        .onChange(of: musicVM.isPlaying) { _, playing in
+            if playing {
+                provider = .apple
+                storedProviderString = provider.rawValue
+            }
+        }
+        .onChange(of: spotifyVM.isPlaying) { _, playing in
+            if playing {
+                provider = .spotify
+                storedProviderString = provider.rawValue
+            }
         }
         .onChange(of: vm.goalReached) { _, reached in
             if reached {
@@ -298,7 +344,7 @@ struct LiveActivityView: View {
         }
         .alert("Goal reached", isPresented: $showGoalAlert) {
             Button("End Activity", role: .destructive) {
-                summary = vm.summary()
+                summary = vm.summary().withChallenge(title: appState.linkedChallengeTitle, isPublic: appState.linkedChallengeIsPublic)
                 vm.stop()
                 if autoStopMusicOnEnd {
                     if provider == .spotify {
@@ -314,6 +360,11 @@ struct LiveActivityView: View {
             }
         } message: {
             Text("You reached your goal. End the run?")
+        }
+        .onDisappear {
+            // Safety: clear link if user backs out without stopping
+            appState.linkedChallengeTitle = nil
+            appState.linkedChallengeIsPublic = nil
         }
     }
 

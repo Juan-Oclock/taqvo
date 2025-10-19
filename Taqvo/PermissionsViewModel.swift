@@ -114,13 +114,25 @@ final class PermissionsViewModel: NSObject, ObservableObject, CLLocationManagerD
             completion(false)
             return
         }
-        let readTypes: Set<HKObjectType> = [
+        // Request broader scopes aligned with our features
+        var readTypes: Set<HKObjectType> = [
             HKObjectType.quantityType(forIdentifier: .stepCount)!,
             HKObjectType.workoutType()
         ]
-        let shareTypes: Set<HKSampleType> = [
+        if let hr = HKObjectType.quantityType(forIdentifier: .heartRate) { readTypes.insert(hr) }
+        if let distWR = HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning) { readTypes.insert(distWR) }
+        if let distCyc = HKObjectType.quantityType(forIdentifier: .distanceCycling) { readTypes.insert(distCyc) }
+        if let energy = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned) { readTypes.insert(energy) }
+        readTypes.insert(HKSeriesType.workoutRoute())
+
+        var shareTypes: Set<HKSampleType> = [
             HKObjectType.workoutType()
         ]
+        if let energy = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned) { shareTypes.insert(energy) }
+        if let distWR = HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning) { shareTypes.insert(distWR) }
+        if let distCyc = HKObjectType.quantityType(forIdentifier: .distanceCycling) { shareTypes.insert(distCyc) }
+        shareTypes.insert(HKSeriesType.workoutRoute())
+
         healthStore.requestAuthorization(toShare: shareTypes, read: readTypes) { success, _ in
             DispatchQueue.main.async {
                 // Consider authorized if workout sharing is granted

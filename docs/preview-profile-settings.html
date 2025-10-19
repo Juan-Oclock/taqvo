@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Taqvo – Profile Settings Preview</title>
+  <style>
+    :root {
+      --cta: #1DB954;
+      --bg: #0F1316;
+      --text-dark: #E9EEF2;
+      --accent: #9AA7B2;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text-dark); margin: 0; }
+    .wrap { max-width: 880px; margin: 24px auto; padding: 0 16px; }
+    h1 { font-size: 24px; margin: 12px 0 16px; }
+    .card { background: rgba(0,0,0,0.08); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .row { display: flex; align-items: center; justify-content: space-between; margin: 8px 0; }
+    .caption { color: var(--accent); font-size: 12px; }
+    .btn { background: var(--cta); color: #0F1316; border: none; border-radius: 12px; padding: 8px 12px; font-weight: 600; cursor: pointer; }
+    .btn:disabled { opacity: 0.6; cursor: default; }
+    .seg { display: inline-flex; gap: 8px; background: rgba(0,0,0,0.12); padding: 6px; border-radius: 10px; }
+    .seg button { background: transparent; color: var(--text-dark); border: none; padding: 6px 10px; border-radius: 8px; }
+    .seg .active { background: var(--cta); color: #0F1316; }
+    .toggle { display: flex; align-items: center; gap: 8px; }
+    .toggle input { width: 36px; height: 20px; }
+    .badge { color: var(--cta); font-weight: 600; }
+    a { color: var(--cta); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Profile Settings Preview</h1>
+
+    <div class="card">
+      <h2>Theme</h2>
+      <div class="seg" role="tablist" aria-label="Theme">
+        <button class="active" aria-selected="true">System</button>
+        <button>Light</button>
+        <button>Dark</button>
+      </div>
+      <p class="caption">Typography: Helvetica Neue per PRD</p>
+    </div>
+
+    <div class="card">
+      <h2>Music</h2>
+      <div class="seg" role="tablist" aria-label="Music Provider">
+        <button>Apple</button>
+        <button class="active">Spotify</button>
+      </div>
+      <div class="row">
+        <div>
+          <div>Spotify</div>
+          <div class="caption">Provider connection status</div>
+        </div>
+        <span class="badge">Connected</span>
+      </div>
+      <div class="row">
+        <button class="btn" disabled>Connected</button>
+      </div>
+      <div class="row">
+        <button class="btn">Choose Spotify Playlist</button>
+      </div>
+      <div class="row">
+        <label class="toggle"><input type="checkbox" checked /> Auto stop music when run ends</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Privacy & Permissions</h2>
+      <div class="row">
+        <div>
+          <div>Location</div>
+          <div class="caption">Required for route tracking</div>
+        </div>
+        <button class="btn" disabled>Enabled</button>
+      </div>
+      <div class="row">
+        <div>
+          <div>Motion & Fitness</div>
+          <div class="caption">Required for steps and cadence</div>
+        </div>
+        <button class="btn">Enable</button>
+      </div>
+      <div class="row">
+        <div>
+          <div>Background Tracking</div>
+          <div class="caption">Allows tracking if screen locks or you switch apps</div>
+        </div>
+        <button class="btn">Enable</button>
+      </div>
+      <div class="row">
+        <div>
+          <div>Apple Health</div>
+          <div class="caption">Sync workouts and steps</div>
+        </div>
+        <button class="btn">Enable</button>
+      </div>
+      <div class="row">
+        <label class="toggle"><input type="checkbox" /> Save workouts to Health by default</label>
+      </div>
+      <div class="row">
+        <button class="btn">Import Past Workouts</button>
+      </div>
+      <p class="caption">Imports recent Health workouts for backfilled insights.</p>
+    </div>
+
+    <p class="caption">This static preview reflects the SwiftUI Profile settings layout and styles.</p>
+    <p class="caption">Related docs: <a href="preview-spotify-integration.html" target="_blank">Spotify integration preview</a></p>
+  </div>
+</body>
+</html>

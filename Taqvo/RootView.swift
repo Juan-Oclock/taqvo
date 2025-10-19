@@ -9,6 +9,15 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject var appState: AppState
+    @AppStorage("appTheme") private var appTheme: String = "system"
+
+    private var preferredScheme: ColorScheme? {
+        switch appTheme {
+        case "dark": return .dark
+        case "light": return .light
+        default: return nil
+        }
+    }
 
     var body: some View {
         Group {
@@ -18,7 +27,7 @@ struct RootView: View {
                 OnboardingView()
             }
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(preferredScheme)
         .onOpenURL { url in
             SpotifyAuthManager.shared.handleCallbackURL(url)
         }

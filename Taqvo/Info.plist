@@ -2,62 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleIdentifier</key>
-	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-	<key>CFBundleExecutable</key>
-	<string>$(EXECUTABLE_NAME)</string>
-	<key>CFBundleName</key>
-	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundleDisplayName</key>
 	<string>Taqvo</string>
-	<key>CFBundleVersion</key>
-	<string>1</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
-
-	<!-- Privacy Usage Descriptions -->
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Used to track your route during runs</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Used to continue tracking if the screen locks</string>
-	<key>NSMotionUsageDescription</key>
-	<string>Used to measure steps and cadence</string>
-	<key>NSHealthShareUsageDescription</key>
-	<string>Used to read workouts and steps from Health</string>
-	<key>NSHealthUpdateUsageDescription</key>
-	<string>Used to save your workouts to Health</string>
-	<key>NSAppleMusicUsageDescription</key>
-	<string>Used to connect Apple Music and control playback during runs</string>
-
-	<!-- Supported Interface Orientations (iPhone) -->
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-
-	<!-- Supported Interface Orientations (iPad) -->
-	<key>UISupportedInterfaceOrientations~ipad</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-
-	<!-- Minimal Launch Screen using asset catalog color -->
-	<key>UILaunchScreen</key>
-	<dict>
-		<key>UIColorName</key>
-		<string>AccentColor</string>
-	</dict>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>location</string>
-	</array>
-
-	<!-- URL Types for Spotify OAuth callback (taqvo://spotify-callback) -->
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -69,11 +23,49 @@
 			</array>
 		</dict>
 	</array>
-
-	<!-- Optional: allow Spotify app queries for App Remote integration later -->
+	<key>CFBundleVersion</key>
+	<string>1</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>spotify</string>
+	</array>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Used to connect Apple Music and control playback during runs</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Used to read workouts and steps from Health</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Used to save your workouts to Health</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Used to continue tracking if the screen locks</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Used to track your route during runs</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Used to measure steps and cadence</string>
+	<key>SUPABASE_ANON_KEY</key>
+	<string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNidHdlbGp3cHh5aGxndmFveHlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3MzAxMjMsImV4cCI6MjA3NjMwNjEyM30.vSK4hI73zYQFx4NvgI52ieAwwXenhQq5QU4sGu10M5U</string>
+	<key>SUPABASE_URL</key>
+	<string>https://cbtweljwpxyhlgvaoxyp.supabase.co</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>AccentColor</string>
+	</dict>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 </dict>
 </plist>

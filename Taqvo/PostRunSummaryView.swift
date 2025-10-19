@@ -21,6 +21,10 @@ struct PostRunSummaryView: View {
     @StateObject private var health = HealthSyncService()
     @State private var saveToHealth: Bool = UserDefaults.standard.bool(forKey: "healthSyncEnabled")
     @State private var healthSaveMessage: String?
+    // Added metrics
+    @State private var stepsCount: Int?
+    @State private var cadenceSPM: Double?
+    @State private var elevationGainMeters: Double?
 
     var body: some View {
         ScrollView {
@@ -43,6 +47,33 @@ struct PostRunSummaryView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .cornerRadius(12)
+                }
+
+                // Metrics
+                HStack(spacing: 16) {
+                    metric("Type", summary.kind.rawValue.capitalized)
+                    metric("Distance", String(format: "%.2f km", summary.distanceMeters/1000.0))
+                    metric("Duration", ActivityTrackingViewModel.formattedDuration(summary.durationSeconds))
+                }
+                HStack(spacing: 16) {
+                    metric("Avg Pace", ActivityTrackingViewModel.formattedPace(distanceMeters: summary.distanceMeters, durationSeconds: summary.durationSeconds))
+                    metric("Calories", String(format: "%.0f kcal", summary.caloriesKilocalories))
+                }
+                // New metrics row
+                HStack(spacing: 16) {
+                    let cadenceText: String = {
+                        if let spm = cadenceSPM { return String(format: "%.0f spm", spm) }
+                        else { return "—" }
+                    }()
+                    let stepsText: String = {
+                        if let steps = stepsCount { return String(steps) } else { return "—" }
+                    }()
+                    let elevationText: String = {
+                        if let elev = elevationGainMeters { return String(format: "%.0f m", elev) } else { return "—" }
+                    }()
+                    metric("Cadence", cadenceText)
+                    metric("Steps", stepsText)
+                    metric("Elevation", elevationText)
                 }
 
                 // Note input
@@ -110,18 +141,33 @@ struct PostRunSummaryView: View {
                     UserDefaults.standard.set(newVal, forKey: "healthSyncEnabled")
                 }
 
-                Button {
-                    Task { @MainActor in
-                        await handleShareTap()
-                    }
-                } label: {
-                    Text("Share to Feed")
+                HStack(spacing: 12) {
+                    ShareLink(item: summaryShareImageURL()) {
+                        HStack {
+                            Image(systemName: "square.and.arrow.up")
+                            Text("Share Image")
+                        }
                         .font(.headline)
                         .foregroundColor(.taqvoTextLight)
                         .padding()
                         .frame(maxWidth: .infinity)
-                        .background(Color.taqvoCTA)
+                        .background(Color.white.opacity(0.85))
                         .cornerRadius(16)
+                    }
+
+                    Button {
+                        Task {
+                            await handleShareTap()
+                        }
+                    } label: {
+                        Text("Share to Feed")
+                            .font(.headline)
+                            .foregroundColor(.taqvoTextLight)
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(Color.taqvoCTA)
+                            .cornerRadius(16)
+                    }
                 }
             }
             .padding()
@@ -129,11 +175,27 @@ struct PostRunSummaryView: View {
         .onAppear {
             generateSnapshot()
         }
-        .task { @MainActor in
+        .task {
             let ok = await health.ensureAuthorization()
             if ok && UserDefaults.standard.object(forKey: "healthSyncEnabled") == nil {
                 saveToHealth = true
                 UserDefaults.standard.set(true, forKey: "healthSyncEnabled")
+            }
+            // Fetch metrics when possible
+            if ok {
+                if let steps = await health.stepCount(start: summary.startDate, end: summary.endDate) {
+                    stepsCount = steps
+                    if cadenceSPM == nil {
+                        let minutes = max(summary.durationSeconds / 60.0, 0.001)
+                        cadenceSPM = Double(steps) / minutes
+                    }
+                }
+                if let cadence = await health.averageCadenceSPM(start: summary.startDate, end: summary.endDate) {
+                    cadenceSPM = cadence
+                }
+                if let elev = await health.elevationGainMeters(start: summary.startDate, end: summary.endDate) {
+                    elevationGainMeters = elev
+                }
             }
         }
         .navigationTitle("Summary")
@@ -186,16 +248,85 @@ struct PostRunSummaryView: View {
         }
     }
 
+    // Compose a summary share image (map/photo + stats overlay) and write PNG to a temp URL
+    private func summaryShareImageURL() -> URL {
+        let verb: String
+        switch summary.kind {
+        case .walk: verb = "Walked"
+        case .jog: verb = "Jogged"
+        case .run: verb = "Ran"
+        case .ride: verb = "Rode"
+        }
+
+        let bgImage: UIImage? = snapshot ?? selectedPhoto
+        let shareView = ZStack {
+            if let img = bgImage {
+                Image(uiImage: img).resizable().aspectRatio(contentMode: .fill)
+            } else {
+                LinearGradient(colors: [.black, .gray.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text(verb + " " + String(format: "%.2f km", summary.distanceMeters/1000.0))
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .shadow(color: .black.opacity(0.6), radius: 2)
+                HStack(spacing: 12) {
+                    Text(ActivityTrackingViewModel.formattedDuration(summary.durationSeconds))
+                    Text(ActivityTrackingViewModel.formattedPace(distanceMeters: summary.distanceMeters, durationSeconds: summary.durationSeconds))
+                    Text(String(format: "%.0f kcal", summary.caloriesKilocalories))
+                }
+                .font(.subheadline)
+                .foregroundColor(.white)
+                .shadow(color: .black.opacity(0.6), radius: 2)
+                Text(summary.endDate.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.9))
+                    .shadow(color: .black.opacity(0.6), radius: 2)
+                Spacer()
+                HStack {
+                    Image(systemName: "figure.run")
+                    Text("Taqvo")
+                }
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.9))
+                .padding(.top, 8)
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(width: 800, height: 450)
+
+        let renderer = ImageRenderer(content: shareView)
+        renderer.scale = 2
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("taqvo-summary-\(Int(summary.endDate.timeIntervalSince1970)).png")
+        if let uiImg = renderer.uiImage, let data = uiImg.pngData() {
+            try? data.write(to: url)
+        } else {
+            // Guaranteed PNG fallback
+            let size = CGSize(width: 800, height: 450)
+            UIGraphicsBeginImageContextWithOptions(size, true, 2)
+            UIColor.black.setFill()
+            UIBezierPath(rect: CGRect(origin: .zero, size: size)).fill()
+            let fallback = UIGraphicsGetImageFromCurrentImageContext()
+            UIGraphicsEndImageContext()
+            if let data = fallback?.pngData() { try? data.write(to: url) }
+        }
+        return url
+    }
+
     @MainActor
     private func handleShareTap() async {
         if saveToHealth && health.authorized {
             let ok = await health.save(summary: summary)
             healthSaveMessage = ok ? "Saved to Health" : "Health save failed"
         }
+        // Attempt to fetch average heart rate for intensity if authorized
+        let avgHR = health.authorized ? await health.averageHeartRateBPM(start: summary.startDate, end: summary.endDate) : nil
         store.add(summary: summary,
                   snapshot: snapshot,
                   note: note.isEmpty ? nil : note,
-                  photo: selectedPhoto)
+                  photo: selectedPhoto,
+                  avgHeartRateBPM: avgHR)
         dismiss()
     }
 }
@@ -204,8 +335,11 @@ struct PostRunSummaryView: View {
     PostRunSummaryView(summary: ActivitySummary(distanceMeters: 1234,
                                                 durationSeconds: 456,
                                                 route: [],
+                                                routeSamples: [],
                                                 startDate: Date(),
-                                                endDate: Date()))
+                                                endDate: Date(),
+                                                kind: .run,
+                                                caloriesKilocalories: 123))
 }
 
 // HealthKit sync service
@@ -218,10 +352,30 @@ final class HealthSyncService: ObservableObject {
         guard HKHealthStore.isHealthDataAvailable() else { return false }
         var share: Set<HKSampleType> = [HKObjectType.workoutType()]
         var read: Set<HKObjectType> = [HKObjectType.workoutType()]
-        if let dist = HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning) {
-            share.insert(dist)
-            read.insert(dist)
+        if let distWR = HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning) {
+            share.insert(distWR)
+            read.insert(distWR)
         }
+        if let distCyc = HKQuantityType.quantityType(forIdentifier: .distanceCycling) {
+            share.insert(distCyc)
+            read.insert(distCyc)
+        }
+        if let energy = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) {
+            share.insert(energy)
+            read.insert(energy)
+        }
+        // Read heart rate for intensity (no sharing needed)
+        if let hr = HKQuantityType.quantityType(forIdentifier: .heartRate) {
+            read.insert(hr)
+        }
+        // Steps and floors
+        if let steps = HKQuantityType.quantityType(forIdentifier: .stepCount) {
+            read.insert(steps)
+        }
+        if let floorsUp = HKQuantityType.quantityType(forIdentifier: .flightsClimbed) {
+            read.insert(floorsUp)
+        }
+        // Removed cadence quantity types to support broader SDKs; cadence will be derived from steps/time
         share.insert(HKSeriesType.workoutRoute())
         read.insert(HKSeriesType.workoutRoute())
 
@@ -240,68 +394,226 @@ final class HealthSyncService: ObservableObject {
             guard ok else { return false }
         }
 
-        let distanceQty = HKQuantity(unit: HKUnit.meter(), doubleValue: summary.distanceMeters)
-        // Use HKWorkoutBuilder (iOS 17+ recommended) to create and save workout
+        // Configure type based on summary.kind
         let config = HKWorkoutConfiguration()
-        config.activityType = .running
+        switch summary.kind {
+        case .walk: config.activityType = .walking
+        case .jog, .run: config.activityType = .running
+        case .ride: config.activityType = .cycling
+        }
+
         let builder = HKWorkoutBuilder(healthStore: store, configuration: config, device: nil)
-        // Begin and end collection with summary start/end
+
         let began = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-        builder.beginCollection(withStart: summary.startDate) { ok, _ in cont.resume(returning: ok) }
+            builder.beginCollection(withStart: summary.startDate) { ok, _ in cont.resume(returning: ok) }
         }
         guard began else { return false }
-        // Add a distance sample to the builder for the workout
-        if let distType = HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning) {
-        let sample = HKQuantitySample(type: distType,
-        quantity: distanceQty,
-        start: summary.startDate,
-        end: summary.endDate)
-        _ = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-        builder.add([sample]) { ok, _ in cont.resume(returning: ok) }
-        }
-        }
-        let ended = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-        builder.endCollection(withEnd: summary.endDate) { ok, _ in cont.resume(returning: ok) }
-        }
-        guard ended else { return false }
-        let workout = await withCheckedContinuation { (cont: CheckedContinuation<HKWorkout?, Never>) in
-        builder.finishWorkout { wk, _ in cont.resume(returning: wk) }
-        }
-        guard let workout = workout else { return false }
-         
-        // Distance samples added to the workout builder are persisted with the workout.
-        // Avoid saving a duplicate standalone distance sample to improve reliability.
-         
-        if summary.route.count >= 2 {
-            let builder = HKWorkoutRouteBuilder(healthStore: store, device: nil)
-            let locs = Self.locations(from: summary.route, start: summary.startDate, end: summary.endDate)
-            let inserted = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-                builder.insertRouteData(locs) { ok, _ in cont.resume(returning: ok) }
-            }
-            guard inserted else { return true }
-        
-            let finished = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-                builder.finishRoute(with: workout, metadata: nil) { _, error in
-                    cont.resume(returning: (error == nil))
+
+        // Distance
+        let distanceQty = HKQuantity(unit: HKUnit.meter(), doubleValue: summary.distanceMeters)
+        let distanceType: HKQuantityTypeIdentifier = (summary.kind == .ride) ? .distanceCycling : .distanceWalkingRunning
+        if let distType = HKQuantityType.quantityType(forIdentifier: distanceType) {
+            let sample = HKQuantitySample(type: distType, quantity: distanceQty, start: summary.startDate, end: summary.endDate)
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                builder.add([sample]) { _, _ in
+                    cont.resume()
                 }
             }
-            return finished
         }
- 
-        return true
+
+        // Active energy
+        if let energyType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) {
+            let energyQty = HKQuantity(unit: HKUnit.kilocalorie(), doubleValue: summary.caloriesKilocalories)
+            let sample = HKQuantitySample(type: energyType, quantity: energyQty, start: summary.startDate, end: summary.endDate)
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                builder.add([sample]) { _, _ in
+                    cont.resume()
+                }
+            }
+        }
+
+        // Route
+        let routeBuilder = HKWorkoutRouteBuilder(healthStore: store, device: nil)
+        let locs = HealthSyncService.locations(from: summary.route, start: summary.startDate, end: summary.endDate)
+        do {
+            try await routeBuilder.insertRouteData(locs)
+        } catch {
+            // intentionally ignore route errors
+        }
+
+        let finished = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            builder.endCollection(withEnd: summary.endDate) { ok, _ in cont.resume(returning: ok) }
+        }
+        guard finished else { return false }
+
+        let saved = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            builder.finishWorkout { workout, error in
+                cont.resume(returning: workout != nil)
+            }
+        }
+
+        return saved
+    }
+
+    // Compute average heart rate (bpm) for a time range
+    func averageHeartRateBPM(start: Date, end: Date) async -> Double? {
+        guard authorized, let type = HKQuantityType.quantityType(forIdentifier: .heartRate) else { return nil }
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [])
+        return await withCheckedContinuation { (cont: CheckedContinuation<Double?, Never>) in
+            let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
+                guard let samples = samples as? [HKQuantitySample], !samples.isEmpty else {
+                    cont.resume(returning: nil)
+                    return
+                }
+                let unit = HKUnit.count().unitDivided(by: HKUnit.minute())
+                let total = samples.reduce(0.0) { $0 + $1.quantity.doubleValue(for: unit) }
+                cont.resume(returning: total / Double(samples.count))
+            }
+            self.store.execute(q)
+        }
+    }
+
+    // Steps count for a time range
+    func stepCount(start: Date, end: Date) async -> Int? {
+        guard authorized, let type = HKQuantityType.quantityType(forIdentifier: .stepCount) else { return nil }
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [])
+        return await withCheckedContinuation { (cont: CheckedContinuation<Int?, Never>) in
+            let q = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, stats, _ in
+                let count = stats?.sumQuantity()?.doubleValue(for: HKUnit.count())
+                cont.resume(returning: count.map { Int($0) })
+            }
+            self.store.execute(q)
+        }
+    }
+
+    // Average cadence (steps per minute) for a time range, derived from steps/duration
+    func averageCadenceSPM(start: Date, end: Date) async -> Double? {
+        guard authorized else { return nil }
+        if let steps = await stepCount(start: start, end: end) {
+            let minutes = max(end.timeIntervalSince(start) / 60.0, 0.001)
+            return Double(steps) / minutes
+        }
+        return nil
+    }
+
+    // Elevation gain estimate using flights climbed (approx 3.0 m per floor)
+    func elevationGainMeters(start: Date, end: Date) async -> Double? {
+        guard authorized, let type = HKQuantityType.quantityType(forIdentifier: .flightsClimbed) else { return nil }
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [])
+        return await withCheckedContinuation { (cont: CheckedContinuation<Double?, Never>) in
+            let q = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, stats, _ in
+                if let floors = stats?.sumQuantity()?.doubleValue(for: HKUnit.count()) {
+                    cont.resume(returning: floors * 3.0)
+                } else { cont.resume(returning: nil) }
+            }
+            self.store.execute(q)
+        }
+    }
+
+    // Import past workouts from Apple Health and convert to ActivitySummary objects
+    func importWorkouts(daysBack: Int) async -> [ActivitySummary] {
+        if !authorized {
+            let ok = await ensureAuthorization()
+            guard ok else { return [] }
+        }
+        let end = Date()
+        let start = Calendar.current.date(byAdding: .day, value: -daysBack, to: end) ?? end.addingTimeInterval(-Double(daysBack) * 86400)
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [])
+        return await withCheckedContinuation { (cont: CheckedContinuation<[ActivitySummary], Never>) in
+            let q = HKSampleQuery(sampleType: HKObjectType.workoutType(), predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
+                guard let workouts = samples as? [HKWorkout] else {
+                    cont.resume(returning: [])
+                    return
+                }
+                Task {
+                    let results = await withTaskGroup(of: ActivitySummary?.self) { group in
+                        for w in workouts {
+                            group.addTask {
+                                let kind: ActivityKind
+                                switch w.workoutActivityType {
+                                case .walking: kind = .walk
+                                case .running: kind = .run
+                                case .cycling: kind = .ride
+                                default: kind = .run
+                                }
+                                let meters = w.totalDistance?.doubleValue(for: HKUnit.meter()) ?? 0
+                                let kcal: Double
+                                if #available(iOS 18.0, *) {
+                                    if let type = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) {
+                                        let stats = w.statistics(for: type)
+                                        kcal = stats?.sumQuantity()?.doubleValue(for: HKUnit.kilocalorie()) ?? 0
+                                    } else {
+                                        kcal = 0
+                                    }
+                                } else {
+                                    kcal = w.totalEnergyBurned?.doubleValue(for: HKUnit.kilocalorie()) ?? 0
+                                }
+                                let (coords, samples) = await self.routeForWorkout(w)
+                                return ActivitySummary(distanceMeters: meters,
+                                                      durationSeconds: w.duration,
+                                                      route: coords,
+                                                      routeSamples: samples,
+                                                      startDate: w.startDate,
+                                                      endDate: w.endDate,
+                                                      kind: kind,
+                                                      caloriesKilocalories: kcal)
+                            }
+                        }
+                        var collected: [ActivitySummary] = []
+                        for await item in group {
+                            if let sum = item { collected.append(sum) }
+                        }
+                        return collected
+                    }
+                    cont.resume(returning: results)
+                }
+            }
+            self.store.execute(q)
+        }
+    }
+
+    private func routeForWorkout(_ workout: HKWorkout) async -> ([CLLocationCoordinate2D], [RouteSample]) {
+        guard authorized else { return ([], []) }
+        let predicate = HKQuery.predicateForObjects(from: workout)
+        return await withCheckedContinuation { (cont: CheckedContinuation<([CLLocationCoordinate2D], [RouteSample]), Never>) in
+            let q = HKSampleQuery(sampleType: HKSeriesType.workoutRoute(), predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
+                guard let routes = samples as? [HKWorkoutRoute], !routes.isEmpty else {
+                    cont.resume(returning: ([], []))
+                    return
+                }
+                var allLocations: [CLLocation] = []
+                let group = DispatchGroup()
+                for route in routes {
+                    group.enter()
+                    var routeLocations: [CLLocation] = []
+                    let rq = HKWorkoutRouteQuery(route: route) { _, locs, done, _ in
+                        if let locs = locs { routeLocations.append(contentsOf: locs) }
+                        if done {
+                            allLocations.append(contentsOf: routeLocations)
+                            group.leave()
+                        }
+                    }
+                    self.store.execute(rq)
+                }
+                group.notify(queue: .main) {
+                    let coords = allLocations.map { $0.coordinate }
+                    let samples = allLocations.map { RouteSample(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude, timestamp: $0.timestamp) }
+                    cont.resume(returning: (coords, samples))
+                }
+            }
+            self.store.execute(q)
+        }
     }
 
     private static func locations(from coords: [CLLocationCoordinate2D], start: Date, end: Date) -> [CLLocation] {
-        guard coords.count > 0 else { return [] }
-        let total = end.timeIntervalSince(start)
-        let count = max(coords.count - 1, 1)
-        return coords.enumerated().map { (i, c) in
-            let ts = start.addingTimeInterval(total * Double(i) / Double(count))
-            return CLLocation(coordinate: c,
-                              altitude: 0,
-                              horizontalAccuracy: 10,
-                              verticalAccuracy: 10,
-                              timestamp: ts)
+        guard !coords.isEmpty else { return [] }
+        let per = max(1, Int((end.timeIntervalSince(start)) / Double(max(coords.count, 1))))
+        var result: [CLLocation] = []
+        var t = start
+        for c in coords {
+            result.append(CLLocation(coordinate: c, altitude: 0, horizontalAccuracy: 10, verticalAccuracy: 10, timestamp: t))
+            t = t.addingTimeInterval(TimeInterval(per))
         }
+        return result
     }
 }

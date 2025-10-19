@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import MapKit
+import CoreLocation
 
 struct Coordinate: Codable {
     let latitude: Double
@@ -34,9 +35,16 @@ struct FeedActivity: Identifiable, Codable {
     var likeCount: Int
     var isLiked: Bool
     var comments: [ActivityComment]
+    let kind: ActivityKind
+    let caloriesKilocalories: Double
+    let averageHeartRateBPM: Double?
+    let splitsSeconds: [Double]?
+    // Challenge context
+    let challengeTitle: String?
+    let challengeIsPublic: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case id, distanceMeters, durationSeconds, route, startDate, endDate, snapshotPNG, note, photoPNG, likeCount, isLiked, comments
+        case id, distanceMeters, durationSeconds, route, startDate, endDate, snapshotPNG, note, photoPNG, likeCount, isLiked, comments, kind, caloriesKilocalories, averageHeartRateBPM, splitsSeconds, challengeTitle, challengeIsPublic
     }
 
     init(id: UUID,
@@ -50,7 +58,13 @@ struct FeedActivity: Identifiable, Codable {
          photoPNG: Data?,
          likeCount: Int = 0,
          isLiked: Bool = false,
-         comments: [ActivityComment] = []) {
+         comments: [ActivityComment] = [],
+         kind: ActivityKind,
+         caloriesKilocalories: Double,
+         averageHeartRateBPM: Double? = nil,
+         splitsSeconds: [Double]? = nil,
+         challengeTitle: String? = nil,
+         challengeIsPublic: Bool? = nil) {
         self.id = id
         self.distanceMeters = distanceMeters
         self.durationSeconds = durationSeconds
@@ -63,6 +77,12 @@ struct FeedActivity: Identifiable, Codable {
         self.likeCount = likeCount
         self.isLiked = isLiked
         self.comments = comments
+        self.kind = kind
+        self.caloriesKilocalories = caloriesKilocalories
+        self.averageHeartRateBPM = averageHeartRateBPM
+        self.splitsSeconds = splitsSeconds
+        self.challengeTitle = challengeTitle
+        self.challengeIsPublic = challengeIsPublic
     }
 
     init(from decoder: Decoder) throws {
@@ -79,6 +99,12 @@ struct FeedActivity: Identifiable, Codable {
         likeCount = try c.decodeIfPresent(Int.self, forKey: .likeCount) ?? 0
         isLiked = try c.decodeIfPresent(Bool.self, forKey: .isLiked) ?? false
         comments = try c.decodeIfPresent([ActivityComment].self, forKey: .comments) ?? []
+        kind = try c.decodeIfPresent(ActivityKind.self, forKey: .kind) ?? .run
+        caloriesKilocalories = try c.decodeIfPresent(Double.self, forKey: .caloriesKilocalories) ?? 0
+        averageHeartRateBPM = try c.decodeIfPresent(Double.self, forKey: .averageHeartRateBPM)
+        splitsSeconds = try c.decodeIfPresent([Double].self, forKey: .splitsSeconds)
+        challengeTitle = try c.decodeIfPresent(String.self, forKey: .challengeTitle)
+        challengeIsPublic = try c.decodeIfPresent(Bool.self, forKey: .challengeIsPublic)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -95,6 +121,12 @@ struct FeedActivity: Identifiable, Codable {
         try c.encode(likeCount, forKey: .likeCount)
         try c.encode(isLiked, forKey: .isLiked)
         try c.encode(comments, forKey: .comments)
+        try c.encode(kind, forKey: .kind)
+        try c.encode(caloriesKilocalories, forKey: .caloriesKilocalories)
+        try c.encodeIfPresent(averageHeartRateBPM, forKey: .averageHeartRateBPM)
+        try c.encodeIfPresent(splitsSeconds, forKey: .splitsSeconds)
+        try c.encodeIfPresent(challengeTitle, forKey: .challengeTitle)
+        try c.encodeIfPresent(challengeIsPublic, forKey: .challengeIsPublic)
     }
 }
 
@@ -106,12 +138,64 @@ final class ActivityStore: ObservableObject {
 
     init() {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        self.fileURL = dir.appendingPathComponent("activities.json")
+        fileURL = dir.appendingPathComponent("activities.json")
         load()
     }
 
-    func add(summary: ActivitySummary, snapshot: UIImage?, note: String? = nil, photo: UIImage? = nil) {
+    private static func computeSplits(from samples: [RouteSample], totalDistanceMeters: Double, totalDurationSeconds: Double) -> [Double] {
+        guard totalDistanceMeters > 0, totalDurationSeconds > 0 else { return [] }
+        guard samples.count > 1 else {
+            // Fallback to coarse average: allocate time proportionally by distance
+            let secPerMeter = totalDurationSeconds / totalDistanceMeters
+            var result: [Double] = []
+            var remainingMeters = totalDistanceMeters
+            while remainingMeters >= 1000.0 {
+                result.append(secPerMeter * 1000.0)
+                remainingMeters -= 1000.0
+            }
+            if remainingMeters > 1 { result.append(secPerMeter * remainingMeters) }
+            return result
+        }
+        var result: [Double] = []
+        var kmAccumDistance: Double = 0
+        var kmAccumTime: Double = 0
+        for i in 1..<samples.count {
+            let a = samples[i-1]
+            let b = samples[i]
+            let locA = CLLocation(latitude: a.latitude, longitude: a.longitude)
+            let locB = CLLocation(latitude: b.latitude, longitude: b.longitude)
+            let d = max(0, locB.distance(from: locA))
+            let dt = max(0, b.timestamp.timeIntervalSince(a.timestamp))
+            if d == 0 {
+                kmAccumTime += dt
+                continue
+            }
+            var distRemaining = d
+            var timeRemaining = dt
+            while kmAccumDistance + distRemaining >= 1000.0 {
+                let need = 1000.0 - kmAccumDistance
+                let frac = need / distRemaining
+                let timeForNeed = timeRemaining * frac
+                kmAccumTime += timeForNeed
+                result.append(kmAccumTime)
+                // advance
+                distRemaining -= need
+                timeRemaining -= timeForNeed
+                kmAccumDistance = 0
+                kmAccumTime = 0
+            }
+            kmAccumDistance += distRemaining
+            kmAccumTime += timeRemaining
+        }
+        if kmAccumDistance > 1 || kmAccumTime > 0.1 {
+            result.append(kmAccumTime)
+        }
+        return result
+    }
+
+    func add(summary: ActivitySummary, snapshot: UIImage?, note: String? = nil, photo: UIImage? = nil, avgHeartRateBPM: Double? = nil) {
         let coords = summary.route.map { Coordinate(latitude: $0.latitude, longitude: $0.longitude) }
+        let splits = ActivityStore.computeSplits(from: summary.routeSamples, totalDistanceMeters: summary.distanceMeters, totalDurationSeconds: summary.durationSeconds)
         let activity = FeedActivity(
             id: UUID(),
             distanceMeters: summary.distanceMeters,
@@ -124,7 +208,13 @@ final class ActivityStore: ObservableObject {
             photoPNG: photo?.pngData(),
             likeCount: 0,
             isLiked: false,
-            comments: []
+            comments: [],
+            kind: summary.kind,
+            caloriesKilocalories: summary.caloriesKilocalories,
+            averageHeartRateBPM: avgHeartRateBPM,
+            splitsSeconds: splits,
+            challengeTitle: summary.linkedChallengeTitle,
+            challengeIsPublic: summary.linkedChallengeIsPublic
         )
         activities.insert(activity, at: 0)
         save()
@@ -157,28 +247,29 @@ final class ActivityStore: ObservableObject {
         }
     }
 
-    // Helper to convert stored coordinates back to CLLocationCoordinate2D
     static func clCoordinates(from coords: [Coordinate]) -> [CLLocationCoordinate2D] {
         coords.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
     }
 
-    // Delete an activity and persist changes
     func delete(activity: FeedActivity) {
         activities.removeAll { $0.id == activity.id }
         save()
     }
 
-    // Like/unlike an activity and persist
     func toggleLike(activityID: UUID) {
         guard let idx = activities.firstIndex(where: { $0.id == activityID }) else { return }
         var a = activities[idx]
-        a.isLiked.toggle()
-        a.likeCount = max(0, a.likeCount + (a.isLiked ? 1 : -1))
+        if a.isLiked {
+            a.isLiked = false
+            if a.likeCount > 0 { a.likeCount -= 1 }
+        } else {
+            a.isLiked = true
+            a.likeCount += 1
+        }
         activities[idx] = a
         save()
     }
 
-    // Add a comment to an activity and persist
     func addComment(activityID: UUID, text: String, author: String = "You") {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -198,6 +289,7 @@ struct WeeklySummary: Identifiable {
     var totalDurationSeconds: Double
     var longestRunMeters: Double
     var longestRunDurationSeconds: Double
+    var totalCaloriesKilocalories: Double
 
     var averagePaceString: String {
         ActivityTrackingViewModel.formattedPace(distanceMeters: totalDistanceMeters, durationSeconds: totalDurationSeconds)
@@ -211,6 +303,7 @@ struct DailySummary: Identifiable {
     var runCount: Int
     var longestRunMeters: Double
     var longestRunDurationSeconds: Double
+    var totalCaloriesKilocalories: Double
 
     var averagePaceString: String {
         ActivityTrackingViewModel.formattedPace(distanceMeters: totalDistanceMeters, durationSeconds: totalDurationSeconds)
@@ -225,6 +318,7 @@ struct MonthlySummary: Identifiable {
     var runCount: Int
     var longestRunMeters: Double
     var longestRunDurationSeconds: Double
+    var totalCaloriesKilocalories: Double
 
     var averagePaceString: String {
         ActivityTrackingViewModel.formattedPace(distanceMeters: totalDistanceMeters, durationSeconds: totalDurationSeconds)
@@ -238,10 +332,11 @@ extension ActivityStore {
 
         for a in activities {
             let day = calendar.startOfDay(for: a.endDate)
-            var summary = bucket[day] ?? DailySummary(id: day, dayStart: day, totalDistanceMeters: 0, totalDurationSeconds: 0, runCount: 0, longestRunMeters: 0, longestRunDurationSeconds: 0)
+            var summary = bucket[day] ?? DailySummary(id: day, dayStart: day, totalDistanceMeters: 0, totalDurationSeconds: 0, runCount: 0, longestRunMeters: 0, longestRunDurationSeconds: 0, totalCaloriesKilocalories: 0)
             summary.totalDistanceMeters += a.distanceMeters
             summary.totalDurationSeconds += a.durationSeconds
             summary.runCount += 1
+            summary.totalCaloriesKilocalories += a.caloriesKilocalories
             if a.distanceMeters > summary.longestRunMeters {
                 summary.longestRunMeters = a.distanceMeters
                 summary.longestRunDurationSeconds = a.durationSeconds
@@ -259,10 +354,11 @@ extension ActivityStore {
         for a in activities {
             let comps = calendar.dateComponents([.year, .month], from: a.endDate)
             guard let startOfMonth = calendar.date(from: comps) else { continue }
-            var summary = bucket[startOfMonth] ?? MonthlySummary(id: startOfMonth, monthStart: startOfMonth, totalDistanceMeters: 0, totalDurationSeconds: 0, runCount: 0, longestRunMeters: 0, longestRunDurationSeconds: 0)
+            var summary = bucket[startOfMonth] ?? MonthlySummary(id: startOfMonth, monthStart: startOfMonth, totalDistanceMeters: 0, totalDurationSeconds: 0, runCount: 0, longestRunMeters: 0, longestRunDurationSeconds: 0, totalCaloriesKilocalories: 0)
             summary.totalDistanceMeters += a.distanceMeters
             summary.totalDurationSeconds += a.durationSeconds
             summary.runCount += 1
+            summary.totalCaloriesKilocalories += a.caloriesKilocalories
             if a.distanceMeters > summary.longestRunMeters {
                 summary.longestRunMeters = a.distanceMeters
                 summary.longestRunDurationSeconds = a.durationSeconds
@@ -281,9 +377,10 @@ extension ActivityStore {
         for a in activities {
             let comps = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: a.endDate)
             guard let startOfWeek = calendar.date(from: comps) else { continue }
-            var summary = bucket[startOfWeek] ?? WeeklySummary(id: startOfWeek, weekStart: startOfWeek, totalDistanceMeters: 0, totalDurationSeconds: 0, longestRunMeters: 0, longestRunDurationSeconds: 0)
+            var summary = bucket[startOfWeek] ?? WeeklySummary(id: startOfWeek, weekStart: startOfWeek, totalDistanceMeters: 0, totalDurationSeconds: 0, longestRunMeters: 0, longestRunDurationSeconds: 0, totalCaloriesKilocalories: 0)
             summary.totalDistanceMeters += a.distanceMeters
             summary.totalDurationSeconds += a.durationSeconds
+            summary.totalCaloriesKilocalories += a.caloriesKilocalories
             if a.distanceMeters > summary.longestRunMeters {
                 summary.longestRunMeters = a.distanceMeters
                 summary.longestRunDurationSeconds = a.durationSeconds

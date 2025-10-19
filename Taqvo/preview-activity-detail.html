@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Preview · Activity Detail</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #0d0f12; color: #cfd3d7; margin: 0; }
+    .wrap { max-width: 840px; margin: 0 auto; padding: 24px; }
+    .card { background: rgba(0,0,0,0.2); border-radius: 16px; padding: 16px; }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .metric { background: rgba(0,0,0,0.25); border-radius: 12px; padding: 12px; }
+    .label { font-size: 12px; color: #8a949e; }
+    .value { font-size: 18px; color: #e8eaed; }
+    .muted { color: #8a949e; font-size: 12px; }
+    .map { height: 300px; border-radius: 16px; background: linear-gradient(135deg,#1b1f24,#111316); display:flex; align-items:center; justify-content:center; color:#8a949e; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="map">MapRouteView preview</div>
+    <div class="card" style="margin-top:16px;">
+      <h1>Activity Detail</h1>
+      <div class="grid">
+        <div class="metric"><div class="label">Distance</div><div class="value" id="distance">--</div></div>
+        <div class="metric"><div class="label">Duration</div><div class="value" id="duration">--</div></div>
+        <div class="metric"><div class="label">Avg Pace</div><div class="value" id="pace">--</div></div>
+        <div class="metric"><div class="label">Calories</div><div class="value" id="calories">--</div></div>
+        <div class="metric"><div class="label">Avg HR</div><div class="value" id="hr">—</div></div>
+        <div class="metric"><div class="label">Avg Speed</div><div class="value" id="speed">--</div></div>
+        <div class="metric"><div class="label">Steps</div><div class="value" id="steps">—</div></div>
+        <div class="metric"><div class="label">Elevation</div><div class="value" id="elev">—</div></div>
+      </div>
+      <p class="muted" style="margin-top:12px;">This page simulates the ActivityDetailView metrics layout.</p>
+    </div>
+  </div>
+  <script>
+    const q = new URLSearchParams(location.search);
+    const fmtDuration = (sec) => {
+      const s = Math.max(0, Math.floor(sec));
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+      return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}` : `${m}:${String(r).padStart(2,'0')}`;
+    };
+    const distMeters = Number(q.get('distanceMeters') || 5000);
+    const durSec = Number(q.get('durationSeconds') || 1500);
+    const paceStr = (() => {
+      if (distMeters <= 1 || durSec <= 0) return '--';
+      const pace = durSec / (distMeters / 1000);
+      const mm = Math.floor(pace / 60), ss = Math.floor(pace % 60);
+      return `${mm}:${String(ss).padStart(2,'0')} min/km`;
+    })();
+    const calories = Number(q.get('calories') || 320);
+    const hr = q.get('avgHR') || '—';
+    const speedKmh = (() => {
+      if (durSec <= 0) return '--';
+      const kmh = (distMeters / 1000) / (durSec / 3600);
+      return `${kmh.toFixed(2)} km/h`;
+    })();
+    const steps = q.get('steps') || '—';
+    const elev = q.get('elevationMeters') || '—';
+
+    document.getElementById('distance').textContent = `${(distMeters/1000).toFixed(2)} km`;
+    document.getElementById('duration').textContent = fmtDuration(durSec);
+    document.getElementById('pace').textContent = paceStr;
+    document.getElementById('calories').textContent = `${calories.toFixed(0)} kcal`;
+    document.getElementById('hr').textContent = hr;
+    document.getElementById('speed').textContent = speedKmh;
+    document.getElementById('steps').textContent = steps;
+    document.getElementById('elev').textContent = (elev === '—' ? '—' : `${Number(elev).toFixed(0)} m`);
+  </script>
+</body>
+</html>

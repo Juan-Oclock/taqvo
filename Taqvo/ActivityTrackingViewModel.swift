@@ -10,12 +10,48 @@ import CoreLocation
 import MapKit
 import UIKit
 
+enum ActivityKind: String, Codable { case walk, jog, run, ride }
+
+struct RouteSample {
+    let latitude: Double
+    let longitude: Double
+    let timestamp: Date
+}
+
 struct ActivitySummary {
     let distanceMeters: Double
     let durationSeconds: Double
     let route: [CLLocationCoordinate2D]
+    let routeSamples: [RouteSample]
     let startDate: Date
     let endDate: Date
+    let kind: ActivityKind
+    let caloriesKilocalories: Double
+    // Challenge metadata (optional)
+    let linkedChallengeTitle: String?
+    let linkedChallengeIsPublic: Bool?
+
+    init(distanceMeters: Double,
+         durationSeconds: Double,
+         route: [CLLocationCoordinate2D],
+         routeSamples: [RouteSample],
+         startDate: Date,
+         endDate: Date,
+         kind: ActivityKind,
+         caloriesKilocalories: Double,
+         linkedChallengeTitle: String? = nil,
+         linkedChallengeIsPublic: Bool? = nil) {
+        self.distanceMeters = distanceMeters
+        self.durationSeconds = durationSeconds
+        self.route = route
+        self.routeSamples = routeSamples
+        self.startDate = startDate
+        self.endDate = endDate
+        self.kind = kind
+        self.caloriesKilocalories = caloriesKilocalories
+        self.linkedChallengeTitle = linkedChallengeTitle
+        self.linkedChallengeIsPublic = linkedChallengeIsPublic
+    }
 }
 
 import CoreMotion
@@ -30,6 +66,7 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
     @Published var distanceGoalMeters: Double?
     @Published var goalReached: Bool = false
     @Published var autoEndOnGoal: Bool = false
+    @Published var activityKind: ActivityKind = .run
     private let locationManager = CLLocationManager()
     private var locations: [CLLocation] = []
     private var timer: Timer?
@@ -50,10 +87,10 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
     private var manualPaused: Bool = false
     private var lowSpeedStart: Date?
     private var highSpeedStart: Date?
-    private let lowSpeedThreshold: Double = 0.7
-    private let resumeSpeedThreshold: Double = 0.8 // lowered for quicker resume
-    private let minLowSpeedDurationToPause: TimeInterval = 3 // lowered for quicker pause
-    private let minHighSpeedDurationToResume: TimeInterval = 2 // lowered for quicker resume
+    private var lowSpeedThreshold: Double = 0.7
+    private var resumeSpeedThreshold: Double = 0.8
+    private var minLowSpeedDurationToPause: TimeInterval = 3
+    private var minHighSpeedDurationToResume: TimeInterval = 2
     private let minSessionSecondsForAutoPause: TimeInterval = 10
 
     var hasSession: Bool { startDate != nil }
@@ -219,19 +256,46 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
         timer?.invalidate()
         timer = nil
     }
+    func setActivityKind(_ kind: ActivityKind) {
+        activityKind = kind
+        configureThresholdsForKind(kind)
+    }
+
+    private func configureThresholdsForKind(_ kind: ActivityKind) {
+        switch kind {
+        case .walk:
+            lowSpeedThreshold = 0.5
+            resumeSpeedThreshold = 0.6
+            minLowSpeedDurationToPause = 5
+            minHighSpeedDurationToResume = 3
+        case .jog:
+            lowSpeedThreshold = 0.8
+            resumeSpeedThreshold = 1.2
+            minLowSpeedDurationToPause = 3
+            minHighSpeedDurationToResume = 2
+        case .run:
+            lowSpeedThreshold = 1.4
+            resumeSpeedThreshold = 2.0
+            minLowSpeedDurationToPause = 3
+            minHighSpeedDurationToResume = 2
+        case .ride:
+            lowSpeedThreshold = 2.0
+            resumeSpeedThreshold = 3.0
+            minLowSpeedDurationToPause = 2
+            minHighSpeedDurationToResume = 2
+        }
+    }
+
     private func tryAutoPauseResumeConsiderSpeed(_ speed: Double, timestamp: Date) {
         guard autoPauseEnabled, startDate != nil else { return }
         if durationSeconds < minSessionSecondsForAutoPause { return }
 
-        // Derive states from speed and motion
         let belowLow = (speed >= 0 && speed < lowSpeedThreshold) || (speed < 0 && motionStationary)
         let aboveHigh = (speed >= resumeSpeedThreshold) || motionWalkingOrRunning
 
-        // Never auto resume/pause while user chose manual pause
         if manualPaused { lowSpeedStart = nil; highSpeedStart = nil; return }
 
         if autoPaused {
-            // While auto-paused, prefer resume logic and ignore low-speed branch
             if aboveHigh {
                 if highSpeedStart == nil { highSpeedStart = timestamp }
                 if let hs = highSpeedStart, timestamp.timeIntervalSince(hs) >= minHighSpeedDurationToResume {
@@ -241,7 +305,6 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
                 highSpeedStart = nil
             }
         } else {
-            // While running, only consider pausing on sustained low-speed
             if belowLow {
                 if lowSpeedStart == nil { lowSpeedStart = timestamp }
                 if let ls = lowSpeedStart, timestamp.timeIntervalSince(ls) >= minLowSpeedDurationToPause {
@@ -263,13 +326,38 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
     }
 
     func summary() -> ActivitySummary {
-        ActivitySummary(
+        let samples: [RouteSample] = locations.map { loc in
+            RouteSample(latitude: loc.coordinate.latitude,
+                        longitude: loc.coordinate.longitude,
+                        timestamp: loc.timestamp)
+        }
+        return ActivitySummary(
             distanceMeters: distanceMeters,
             durationSeconds: durationSeconds,
             route: routeCoordinates,
+            routeSamples: samples,
             startDate: startDate ?? Date(),
-            endDate: Date()
+            endDate: Date(),
+            kind: activityKind,
+            caloriesKilocalories: estimateCalories()
         )
+    }
+
+    private func estimateCalories() -> Double {
+        // Simple MET-based estimate; refine later with HealthKit data
+        // MET values approximate: walk 3.5, jog 7.0, run 9.8, ride 8.0
+        let met: Double
+        switch activityKind {
+        case .walk: met = 3.5
+        case .jog: met = 7.0
+        case .run: met = 9.8
+        case .ride: met = 8.0
+        }
+        // Assume body mass 70kg if not available; kcal = MET * 3.5 * weight(kg)/200 * minutes
+        let weightKg: Double = 70
+        let minutes = max(durationSeconds, 0) / 60.0
+        let kcal = met * 3.5 * weightKg / 200.0 * minutes
+        return max(kcal, 0)
     }
 
     static func formattedPace(distanceMeters: Double, durationSeconds: Double) -> String {
@@ -347,7 +435,6 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
             guard let self = self, let a = activity else { return }
             self.motionStationary = a.stationary || a.unknown
             self.motionWalkingOrRunning = a.walking || a.running
-            // Drive auto-resume even if speed is temporarily unavailable
             self.tryAutoPauseResumeConsiderSpeed(-1, timestamp: Date())
         }
     }
@@ -357,6 +444,23 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
         motionStationary = false
         motionWalkingOrRunning = false
     }
-func setTimeGoal(_ seconds: Double?) { timeGoalSeconds = seconds }
+    func setTimeGoal(_ seconds: Double?) { timeGoalSeconds = seconds }
     func setDistanceGoal(_ meters: Double?) { distanceGoalMeters = meters }
+}
+
+extension ActivitySummary {
+    func withChallenge(title: String?, isPublic: Bool?) -> ActivitySummary {
+        ActivitySummary(
+            distanceMeters: self.distanceMeters,
+            durationSeconds: self.durationSeconds,
+            route: self.route,
+            routeSamples: self.routeSamples,
+            startDate: self.startDate,
+            endDate: self.endDate,
+            kind: self.kind,
+            caloriesKilocalories: self.caloriesKilocalories,
+            linkedChallengeTitle: title,
+            linkedChallengeIsPublic: isPublic
+        )
+    }
 }

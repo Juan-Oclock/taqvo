@@ -1,43 +1,16 @@
 import SwiftUI
 
-struct DayContribution: Identifiable {
-    let id = UUID()
-    let date: Date
-    let distanceMeters: Double
-}
-
 struct ChallengeDetailView: View {
-    let challenge: Challenge
-    @EnvironmentObject var store: ActivityStore
     @EnvironmentObject var community: CommunityViewModel
+    @EnvironmentObject var store: ActivityStore
+    @EnvironmentObject var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+    @State private var showDeleteConfirm = false
+    @State private var canDelete = false
 
-    private var currentChallenge: Challenge {
-        community.challenges.first(where: { $0.id == challenge.id }) ?? challenge
-    }
-
-    private var dateRangeText: String {
-        let startStr = currentChallenge.startDate.formatted(date: .abbreviated, time: .omitted)
-        let endStr = currentChallenge.endDate.formatted(date: .abbreviated, time: .omitted)
-        return "\(startStr) – \(endStr)"
-    }
-
-    private func dayContributions() -> [DayContribution] {
-        var items: [DayContribution] = []
-        let cal = Calendar(identifier: .iso8601)
-        var day = cal.startOfDay(for: currentChallenge.startDate)
-        let end = cal.startOfDay(for: currentChallenge.endDate)
-        while day <= end {
-            let distance = store.dailySummaries()
-                .filter { $0.dayStart == day }
-                .reduce(0.0) { $0 + $1.totalDistanceMeters }
-            items.append(DayContribution(date: day, distanceMeters: distance))
-            day = cal.date(byAdding: .day, value: 1, to: day) ?? day
-        }
-        return items
-    }
+    let challenge: Challenge
 
     var body: some View {
-        let contributions = dayContributions()
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -49,9 +22,17 @@ struct ChallengeDetailView: View {
                         Button(currentChallenge.isJoined ? "Leave" : "Join") {
                             community.toggleJoin(challengeID: currentChallenge.id)
                             community.refreshProgress(from: store)
+                            // If joining, jump to Activity to start tracking with sensible defaults
+                            if community.challenges.first(where: { $0.id == currentChallenge.id })?.isJoined == true {
+                                appState.activityIntent = .run
+                                appState.goalIntentType = .distance
+                                appState.goalIntentMeters = 5000
+                                appState.linkedChallengeTitle = currentChallenge.title
+                                appState.linkedChallengeIsPublic = currentChallenge.isPublic
+                                appState.navigateToActivity = true
+                            }
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.taqvoCTA)
+                        .buttonStyle(TaqvoCTAButtonStyle())
                     }
 
                     Text(currentChallenge.detail)
@@ -63,70 +44,94 @@ struct ChallengeDetailView: View {
                             .foregroundColor(.taqvoAccentText)
                         Spacer()
                         Text(String(format: "Goal: %.0f km", currentChallenge.goalDistanceMeters/1000.0))
-                            .font(.caption)
-                            .foregroundColor(.taqvoAccentText)
                     }
 
-                    ProgressView(value: currentChallenge.progressFraction) {
-                        Text(String(format: "Progress: %.1f/%.1f km", currentChallenge.progressMeters/1000.0, currentChallenge.goalDistanceMeters/1000.0))
-                            .foregroundColor(.taqvoTextDark)
-                    }
-                    .tint(.taqvoCTA)
-
-                    Text("Per-day contribution")
-                        .font(.headline)
-                        .foregroundColor(.taqvoTextDark)
-
-                    DailyContributionsBarChart(days: contributions)
-                        .frame(height: 160)
-                        .padding(.vertical, 4)
-
+                    // Contributions list
                     VStack(alignment: .leading, spacing: 8) {
-                        ForEach(contributions) { d in
+                        Text("Daily Contributions")
+                            .font(.headline)
+                            .foregroundColor(.taqvoTextDark)
+                        ForEach(dayContributions()) { c in
                             HStack {
-                                Text(d.date.formatted(date: .abbreviated, time: .omitted))
-                                    .font(.caption)
+                                Text(c.date.formatted(date: .abbreviated, time: .omitted))
                                     .foregroundColor(.taqvoAccentText)
                                 Spacer()
-                                Text(String(format: "%.2f km", d.distanceMeters/1000.0))
+                                Text(String(format: "%.2f km", c.distanceMeters/1000.0))
                                     .foregroundColor(.taqvoTextDark)
                             }
-                            .padding(.vertical, 4)
+                        }
+                    }
+
+                    if currentChallenge.isJoined {
+                        Button {
+                            appState.activityIntent = .run
+                            appState.goalIntentType = .distance
+                            appState.goalIntentMeters = 5000
+                            appState.linkedChallengeTitle = currentChallenge.title
+                            appState.linkedChallengeIsPublic = currentChallenge.isPublic
+                            appState.navigateToActivity = true
+                        } label: {
+                            Text("Start Activity")
+                                .font(.headline)
+                                .foregroundColor(.taqvoTextLight)
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(Color.taqvoCTA)
+                                .cornerRadius(16)
                         }
                     }
                 }
-                .padding()
             }
-            .background(Color.taqvoBackgroundDark)
             .navigationTitle("Challenge")
+            .toolbar {
+                if canDelete {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(role: .destructive) {
+                            showDeleteConfirm = true
+                        } label: {
+                            Text("Delete")
+                        }
+                    }
+                }
+            }
+            .alert("Delete this challenge?", isPresented: $showDeleteConfirm) {
+                Button("Delete", role: .destructive) {
+                    Task {
+                        try? await community.deleteChallenge(challengeID: currentChallenge.id)
+                        await MainActor.run { dismiss() }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This cannot be undone.")
+            }
+        }
+        .task {
+            canDelete = await community.canDelete(challengeID: challenge.id)
         }
         .onAppear {
             community.refreshProgress(from: store)
         }
     }
+
+    private var currentChallenge: Challenge {
+        community.challenges.first(where: { $0.id == challenge.id }) ?? challenge
+    }
+
+    private var dateRangeText: String {
+        let df = DateFormatter()
+        df.dateStyle = .medium
+        return "\(df.string(from: currentChallenge.startDate)) - \(df.string(from: currentChallenge.endDate))"
+    }
+
+    private func dayContributions() -> [ContributionDay] {
+        // Placeholder until wired to real data
+        return []
+    }
 }
 
-struct DailyContributionsBarChart: View {
-    let days: [DayContribution]
-
-    private var maxDistance: Double { max(days.map { $0.distanceMeters }.max() ?? 0, 1) }
-
-    var body: some View {
-        GeometryReader { geo in
-            HStack(alignment: .bottom, spacing: 6) {
-                ForEach(days) { d in
-                    let ratio = CGFloat(d.distanceMeters / maxDistance)
-                    VStack(spacing: 4) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.taqvoCTA)
-                            .frame(width: max(8, (geo.size.width - 6 * CGFloat(days.count - 1)) / CGFloat(days.count)), height: max(8, geo.size.height * ratio))
-                        Text(d.date.formatted(.dateTime.day()))
-                            .font(.caption2)
-                            .foregroundColor(.taqvoAccentText)
-                            .lineLimit(1)
-                    }
-                }
-            }
-        }
-    }
+struct ContributionDay: Identifiable {
+    let id = UUID()
+    let date: Date
+    let distanceMeters: Double
 }

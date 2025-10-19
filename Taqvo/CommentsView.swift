@@ -57,21 +57,24 @@ struct CommentsView: View {
         .background(Color.taqvoBackgroundDark)
         .navigationTitle("Comments")
         .safeAreaInset(edge: .bottom) {
-            HStack(spacing: 8) {
-                TextField("Add a comment…", text: $commentText)
-                    .textFieldStyle(.roundedBorder)
-                Button("Send") {
-                    let text = commentText
-                    commentText = ""
-                    store.addComment(activityID: activityID, text: text, author: "You")
-                }
-                .disabled(commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .buttonStyle(.borderedProminent)
-                .tint(.taqvoCTA)
-            }
-            .padding()
-            .background(Color(.systemBackground).opacity(0.95))
+            composer
         }
+    }
+    private var composer: some View {
+        HStack(spacing: 8) {
+            TextField("Add a comment…", text: $commentText)
+                .textFieldStyle(.roundedBorder)
+            Button("Send") {
+                let trimmed = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return }
+                commentText = ""
+                store.addComment(activityID: activityID, text: trimmed, author: "You")
+            }
+            .disabled(commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .buttonStyle(TaqvoCTAButtonStyle())
+        }
+        .padding()
+        .background(Color(.systemBackground).opacity(0.95))
     }
 }
 

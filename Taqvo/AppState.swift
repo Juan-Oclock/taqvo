@@ -14,6 +14,10 @@ enum MusicProvider: String, CaseIterable {
     case apple
 }
 
+// Simple intent enums for Activity preselection
+enum ActivityIntentType: String, CaseIterable { case walk, jog, run, ride }
+enum GoalIntentType: String, CaseIterable { case none, time, distance }
+
 final class AppState: ObservableObject {
     @Published var hasCompletedOnboarding: Bool = false
 
@@ -22,6 +26,19 @@ final class AppState: ObservableObject {
     @Published var motionAuthorized: Bool = false
     @Published var healthAuthorized: Bool = false // optional per PRD
     @Published var backgroundTrackingEnabled: Bool = false // authorizedAlways
+
+    // Navigation intents
+    @Published var navigateToActivity: Bool = false
+
+    // Activity preselection intents
+    @Published var activityIntent: ActivityIntentType? = nil
+    @Published var goalIntentType: GoalIntentType? = nil
+    @Published var goalIntentSeconds: Double? = nil
+    @Published var goalIntentMeters: Double? = nil
+
+    // Challenge link context for the next activity/live view
+    @Published var linkedChallengeTitle: String? = nil
+    @Published var linkedChallengeIsPublic: Bool? = nil
 
     var allRequiredPermissionsGranted: Bool {
         locationAuthorized && motionAuthorized

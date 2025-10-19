@@ -8,13 +8,14 @@
 import SwiftUI
 
 @main
+@MainActor
 struct TaqvoApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var activityStore = ActivityStore()
     @StateObject private var communityVM: CommunityViewModel
 
     init() {
-        if let supabase = SupabaseCommunityDataSource.makeFromInfoPlist() {
+        if let supabase = SupabaseCommunityDataSource.makeFromInfoPlist(authManager: SupabaseAuthManager.shared) {
             _communityVM = StateObject(wrappedValue: CommunityViewModel(dataSource: supabase))
         } else {
             _communityVM = StateObject(wrappedValue: CommunityViewModel(dataSource: MockCommunityDataSource()))

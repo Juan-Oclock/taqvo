@@ -31,7 +31,15 @@ struct MapRouteView: UIViewRepresentable {
         map.showsUserLocation = true
         map.isPitchEnabled = true
         map.isRotateEnabled = false
-        map.overrideUserInterfaceStyle = .dark
+        // Respect app theme selection
+        let theme = UserDefaults.standard.string(forKey: "appTheme") ?? "system"
+        let style: UIUserInterfaceStyle
+        switch theme {
+        case "dark": style = .dark
+        case "light": style = .light
+        default: style = .unspecified
+        }
+        map.overrideUserInterfaceStyle = style
         return map
     }
 
