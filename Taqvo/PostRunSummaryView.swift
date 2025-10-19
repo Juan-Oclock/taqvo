@@ -25,6 +25,8 @@ struct PostRunSummaryView: View {
     @State private var stepsCount: Int?
     @State private var cadenceSPM: Double?
     @State private var elevationGainMeters: Double?
+    // Optional custom title for the activity
+    @State private var activityTitle: String = ""
 
     var body: some View {
         ScrollView {
@@ -77,6 +79,14 @@ struct PostRunSummaryView: View {
                 }
 
                 // Note input
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Title (optional)")
+                        .font(.caption)
+                        .foregroundColor(.taqvoAccentText)
+                    TextField("e.g., Morning Run", text: $activityTitle)
+                        .textFieldStyle(.roundedBorder)
+                }
+
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Add a note")
                         .font(.caption)
@@ -266,7 +276,12 @@ struct PostRunSummaryView: View {
                 LinearGradient(colors: [.black, .gray.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing)
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text(verb + " " + String(format: "%.2f km", summary.distanceMeters/1000.0))
+                let header: String = {
+                    let t = activityTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !t.isEmpty { return t }
+                    return verb + " " + String(format: "%.2f km", summary.distanceMeters/1000.0)
+                }()
+                Text(header)
                     .font(.headline)
                     .foregroundColor(.white)
                     .shadow(color: .black.opacity(0.6), radius: 2)
@@ -322,11 +337,14 @@ struct PostRunSummaryView: View {
         }
         // Attempt to fetch average heart rate for intensity if authorized
         let avgHR = health.authorized ? await health.averageHeartRateBPM(start: summary.startDate, end: summary.endDate) : nil
+        let trimmedTitle = activityTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let passedTitle = trimmedTitle.isEmpty ? nil : trimmedTitle
         store.add(summary: summary,
                   snapshot: snapshot,
                   note: note.isEmpty ? nil : note,
                   photo: selectedPhoto,
-                  avgHeartRateBPM: avgHR)
+                  avgHeartRateBPM: avgHR,
+                  title: passedTitle)
         dismiss()
     }
 }

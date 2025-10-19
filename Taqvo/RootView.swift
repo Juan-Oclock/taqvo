@@ -31,6 +31,12 @@ struct RootView: View {
         .onOpenURL { url in
             SpotifyAuthManager.shared.handleCallbackURL(url)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .supabaseAuthStateChanged)) { _ in
+            // If user signs out, send them back to onboarding
+            if !SupabaseAuthManager.shared.isAuthenticated {
+                appState.hasCompletedOnboarding = false
+            }
+        }
     }
 }
 

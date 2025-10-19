@@ -32,6 +32,7 @@ struct FeedActivity: Identifiable, Codable {
     let snapshotPNG: Data?
     let note: String?
     let photoPNG: Data?
+    let title: String?
     var likeCount: Int
     var isLiked: Bool
     var comments: [ActivityComment]
@@ -42,9 +43,12 @@ struct FeedActivity: Identifiable, Codable {
     // Challenge context
     let challengeTitle: String?
     let challengeIsPublic: Bool?
+    // Persisted metrics (optional)
+    let stepsCount: Int?
+    let elevationGainMeters: Double?
 
     enum CodingKeys: String, CodingKey {
-        case id, distanceMeters, durationSeconds, route, startDate, endDate, snapshotPNG, note, photoPNG, likeCount, isLiked, comments, kind, caloriesKilocalories, averageHeartRateBPM, splitsSeconds, challengeTitle, challengeIsPublic
+        case id, distanceMeters, durationSeconds, route, startDate, endDate, snapshotPNG, note, photoPNG, title, likeCount, isLiked, comments, kind, caloriesKilocalories, averageHeartRateBPM, splitsSeconds, challengeTitle, challengeIsPublic, stepsCount, elevationGainMeters
     }
 
     init(id: UUID,
@@ -56,6 +60,7 @@ struct FeedActivity: Identifiable, Codable {
          snapshotPNG: Data?,
          note: String?,
          photoPNG: Data?,
+         title: String? = nil,
          likeCount: Int = 0,
          isLiked: Bool = false,
          comments: [ActivityComment] = [],
@@ -64,7 +69,9 @@ struct FeedActivity: Identifiable, Codable {
          averageHeartRateBPM: Double? = nil,
          splitsSeconds: [Double]? = nil,
          challengeTitle: String? = nil,
-         challengeIsPublic: Bool? = nil) {
+         challengeIsPublic: Bool? = nil,
+         stepsCount: Int? = nil,
+         elevationGainMeters: Double? = nil) {
         self.id = id
         self.distanceMeters = distanceMeters
         self.durationSeconds = durationSeconds
@@ -74,6 +81,7 @@ struct FeedActivity: Identifiable, Codable {
         self.snapshotPNG = snapshotPNG
         self.note = note
         self.photoPNG = photoPNG
+        self.title = title
         self.likeCount = likeCount
         self.isLiked = isLiked
         self.comments = comments
@@ -83,6 +91,8 @@ struct FeedActivity: Identifiable, Codable {
         self.splitsSeconds = splitsSeconds
         self.challengeTitle = challengeTitle
         self.challengeIsPublic = challengeIsPublic
+        self.stepsCount = stepsCount
+        self.elevationGainMeters = elevationGainMeters
     }
 
     init(from decoder: Decoder) throws {
@@ -96,6 +106,7 @@ struct FeedActivity: Identifiable, Codable {
         snapshotPNG = try c.decodeIfPresent(Data.self, forKey: .snapshotPNG)
         note = try c.decodeIfPresent(String.self, forKey: .note)
         photoPNG = try c.decodeIfPresent(Data.self, forKey: .photoPNG)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
         likeCount = try c.decodeIfPresent(Int.self, forKey: .likeCount) ?? 0
         isLiked = try c.decodeIfPresent(Bool.self, forKey: .isLiked) ?? false
         comments = try c.decodeIfPresent([ActivityComment].self, forKey: .comments) ?? []
@@ -105,6 +116,8 @@ struct FeedActivity: Identifiable, Codable {
         splitsSeconds = try c.decodeIfPresent([Double].self, forKey: .splitsSeconds)
         challengeTitle = try c.decodeIfPresent(String.self, forKey: .challengeTitle)
         challengeIsPublic = try c.decodeIfPresent(Bool.self, forKey: .challengeIsPublic)
+        stepsCount = try c.decodeIfPresent(Int.self, forKey: .stepsCount)
+        elevationGainMeters = try c.decodeIfPresent(Double.self, forKey: .elevationGainMeters)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -127,6 +140,8 @@ struct FeedActivity: Identifiable, Codable {
         try c.encodeIfPresent(splitsSeconds, forKey: .splitsSeconds)
         try c.encodeIfPresent(challengeTitle, forKey: .challengeTitle)
         try c.encodeIfPresent(challengeIsPublic, forKey: .challengeIsPublic)
+        try c.encodeIfPresent(stepsCount, forKey: .stepsCount)
+        try c.encodeIfPresent(elevationGainMeters, forKey: .elevationGainMeters)
     }
 }
 
@@ -193,7 +208,7 @@ final class ActivityStore: ObservableObject {
         return result
     }
 
-    func add(summary: ActivitySummary, snapshot: UIImage?, note: String? = nil, photo: UIImage? = nil, avgHeartRateBPM: Double? = nil) {
+    func add(summary: ActivitySummary, snapshot: UIImage?, note: String? = nil, photo: UIImage? = nil, avgHeartRateBPM: Double? = nil, title: String? = nil) {
         let coords = summary.route.map { Coordinate(latitude: $0.latitude, longitude: $0.longitude) }
         let splits = ActivityStore.computeSplits(from: summary.routeSamples, totalDistanceMeters: summary.distanceMeters, totalDurationSeconds: summary.durationSeconds)
         let activity = FeedActivity(
@@ -206,6 +221,7 @@ final class ActivityStore: ObservableObject {
             snapshotPNG: snapshot?.pngData(),
             note: note,
             photoPNG: photo?.pngData(),
+            title: title,
             likeCount: 0,
             isLiked: false,
             comments: [],
@@ -214,7 +230,9 @@ final class ActivityStore: ObservableObject {
             averageHeartRateBPM: avgHeartRateBPM,
             splitsSeconds: splits,
             challengeTitle: summary.linkedChallengeTitle,
-            challengeIsPublic: summary.linkedChallengeIsPublic
+            challengeIsPublic: summary.linkedChallengeIsPublic,
+            stepsCount: summary.stepsCount,
+            elevationGainMeters: summary.elevationGainMeters
         )
         activities.insert(activity, at: 0)
         save()

@@ -62,6 +62,122 @@ final class SupabaseAuthManager: NSObject, ObservableObject {
         NotificationCenter.default.post(name: .supabaseAuthStateChanged, object: nil)
     }
 
+    // Email + Password Sign-In (Supabase GoTrue)
+    func signInWithEmail(email: String, password: String) {
+        Task { await signInWithEmailAsync(email: email, password: password) }
+    }
+
+    private func signInWithEmailAsync(email: String, password: String) async {
+        guard let info = Bundle.main.infoDictionary,
+              let urlString = info["SUPABASE_URL"] as? String,
+              let anon = info["SUPABASE_ANON_KEY"] as? String,
+              let base = URL(string: urlString) else {
+            lastAuthError = "Missing SUPABASE_URL or SUPABASE_ANON_KEY in Info.plist"
+            return
+        }
+        var comps = URLComponents(url: base.appendingPathComponent("/auth/v1/token"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [URLQueryItem(name: "grant_type", value: "password")]
+        var req = URLRequest(url: comps.url!)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(anon, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(anon)", forHTTPHeaderField: "Authorization")
+        let body: [String: Any] = ["email": email, "password": password]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [])
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return }
+            if !(200...299).contains(http.statusCode) {
+                let msg = String(data: data, encoding: .utf8) ?? ""
+                lastAuthError = "Email sign-in failed: \(http.statusCode) \(msg)"
+                isAuthenticated = false
+                NotificationCenter.default.post(name: .supabaseAuthStateChanged, object: nil)
+                return
+            }
+            if let session = try? JSONDecoder().decode(SupabaseSessionResponse.self, from: data) {
+                self.accessToken = session.access_token
+                self.userId = session.user?.id
+                if let expiresIn = session.expires_in {
+                    self.tokenExpiry = Date().addingTimeInterval(TimeInterval(expiresIn))
+                }
+                if let rt = session.refresh_token, !rt.isEmpty {
+                    self.refreshToken = rt
+                }
+                self.isAuthenticated = (self.accessToken != nil)
+                self.lastAuthError = nil
+                self.persistSession()
+                NotificationCenter.default.post(name: .supabaseAuthStateChanged, object: nil)
+            } else {
+                let msg = String(data: data, encoding: .utf8) ?? ""
+                lastAuthError = "Email sign-in succeeded but response parsing failed: \(msg)"
+                isAuthenticated = false
+                NotificationCenter.default.post(name: .supabaseAuthStateChanged, object: nil)
+            }
+        } catch {
+            lastAuthError = error.localizedDescription
+            isAuthenticated = false
+            NotificationCenter.default.post(name: .supabaseAuthStateChanged, object: nil)
+        }
+    }
+
+    // Email + Password Sign-Up (Supabase GoTrue)
+    func signUpWithEmail(email: String, password: String) {
+        Task { await signUpWithEmailAsync(email: email, password: password) }
+    }
+
+    private func signUpWithEmailAsync(email: String, password: String) async {
+        guard let info = Bundle.main.infoDictionary,
+              let urlString = info["SUPABASE_URL"] as? String,
+              let anon = info["SUPABASE_ANON_KEY"] as? String,
+              let base = URL(string: urlString) else {
+            lastAuthError = "Missing SUPABASE_URL or SUPABASE_ANON_KEY in Info.plist"
+            return
+        }
+        let url = base.appendingPathComponent("/auth/v1/signup")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(anon, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(anon)", forHTTPHeaderField: "Authorization")
+        let body: [String: Any] = ["email": email, "password": password]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [])
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return }
+            if !(200...299).contains(http.statusCode) {
+                let msg = String(data: data, encoding: .utf8) ?? ""
+                lastAuthError = "Email sign-up failed: \(http.statusCode) \(msg)"
+                isAuthenticated = false
+                NotificationCenter.default.post(name: .supabaseAuthStateChanged, object: nil)
+                return
+            }
+            // Try to parse a session (autoconfirm enabled) first
+            if let session = try? JSONDecoder().decode(SupabaseSessionResponse.self, from: data) {
+                self.accessToken = session.access_token
+                self.userId = session.user?.id
+                if let expiresIn = session.expires_in {
+                    self.tokenExpiry = Date().addingTimeInterval(TimeInterval(expiresIn))
+                }
+                if let rt = session.refresh_token, !rt.isEmpty {
+                    self.refreshToken = rt
+                }
+                self.isAuthenticated = (self.accessToken != nil)
+                self.lastAuthError = nil
+                self.persistSession()
+                NotificationCenter.default.post(name: .supabaseAuthStateChanged, object: nil)
+            } else {
+                // No session returned — email confirmation likely required
+                self.lastAuthError = "Check your email to confirm sign-up."
+                self.isAuthenticated = false
+                NotificationCenter.default.post(name: .supabaseAuthStateChanged, object: nil)
+            }
+        } catch {
+            lastAuthError = error.localizedDescription
+            isAuthenticated = false
+            NotificationCenter.default.post(name: .supabaseAuthStateChanged, object: nil)
+        }
+    }
+
     // MARK: - Session Storage
     private func loadStoredSession() {
         let d = UserDefaults.standard

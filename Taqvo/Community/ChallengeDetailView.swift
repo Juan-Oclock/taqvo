@@ -7,6 +7,8 @@ struct ChallengeDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirm = false
     @State private var canDelete = false
+    @State private var showInviteSheet = false
+    @State private var inviteUsernamesText = ""
 
     let challenge: Challenge
 
@@ -80,6 +82,14 @@ struct ChallengeDetailView: View {
                                 .cornerRadius(16)
                         }
                     }
+
+                    // Invite participants
+                    Button {
+                        showInviteSheet = true
+                    } label: {
+                        Label("Invite Participants", systemImage: "person.crop.circle.badge.plus")
+                    }
+                    .buttonStyle(.bordered)
                 }
             }
             .navigationTitle("Challenge")
@@ -112,6 +122,10 @@ struct ChallengeDetailView: View {
         .onAppear {
             community.refreshProgress(from: store)
         }
+        .sheet(isPresented: $showInviteSheet) {
+            InviteParticipantsSheet(challengeID: currentChallenge.id, inviteUsernamesText: $inviteUsernamesText)
+                .environmentObject(community)
+        }
     }
 
     private var currentChallenge: Challenge {
@@ -134,4 +148,51 @@ struct ContributionDay: Identifiable {
     let id = UUID()
     let date: Date
     let distanceMeters: Double
+}
+
+struct InviteParticipantsSheet: View {
+    let challengeID: UUID
+    @EnvironmentObject var community: CommunityViewModel
+    @Environment(\.dismiss) private var dismiss
+    @Binding var inviteUsernamesText: String
+    @State private var sending = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Usernames") {
+                    TextField("alice, bob, charlie", text: $inviteUsernamesText)
+                }
+                if let msg = errorMessage {
+                    Section { Text(msg).foregroundColor(.red) }
+                }
+            }
+            .navigationTitle("Invite Participants")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(sending ? "Sending..." : "Send Invites") {
+                        let names = inviteUsernamesText
+                            .split(separator: ",")
+                            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                            .filter { !$0.isEmpty }
+                        Task {
+                            sending = true
+                            do {
+                                try await community.inviteParticipants(challengeID: challengeID, usernames: names)
+                                await MainActor.run { dismiss() }
+                            } catch {
+                                errorMessage = (error as NSError).localizedDescription
+                            }
+                            sending = false
+                        }
+                    }
+                    .disabled(inviteUsernamesText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending)
+                }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
 }

@@ -27,6 +27,15 @@ struct Challenge: Identifiable, Hashable {
     }
 }
 
+struct Club: Identifiable, Hashable {
+    let id: UUID
+    var name: String
+    var description: String
+    var isPublic: Bool
+    var isJoined: Bool
+    var memberCount: Int
+}
+
 import Foundation
 import Combine
 
@@ -35,14 +44,22 @@ struct LeaderboardEntry: Identifiable, Hashable {
     var rank: Int
     var userName: String
     var totalDistanceMeters: Double
+    // Optional fields to support filters beyond distance
+    var totalDurationSeconds: Double?
+    var currentStreakDays: Int?
 }
+
+enum LeaderboardSort: String, CaseIterable { case distance, pace, streak }
 
 final class CommunityViewModel: ObservableObject {
     @Published var challenges: [Challenge] = []
     @Published var leaderboard: [LeaderboardEntry] = []
+    @Published var leaderboardSort: LeaderboardSort = .distance
+    @Published var clubs: [Club] = []
 
     private let dataSource: CommunityDataSource
     private let joinStatesKey = "community_join_states"
+    private let clubJoinStatesKey = "community_club_join_states"
     private func loadJoinStates() -> [String: Bool] {
         (UserDefaults.standard.dictionary(forKey: joinStatesKey) as? [String: Bool]) ?? [:]
     }
@@ -51,15 +68,25 @@ final class CommunityViewModel: ObservableObject {
         map[challengeID.uuidString] = isJoined
         UserDefaults.standard.set(map, forKey: joinStatesKey)
     }
+    private func loadClubJoinStates() -> [String: Bool] {
+        (UserDefaults.standard.dictionary(forKey: clubJoinStatesKey) as? [String: Bool]) ?? [:]
+    }
+    private func saveClubJoinState(clubID: UUID, isJoined: Bool) {
+        var map = loadClubJoinStates()
+        map[clubID.uuidString] = isJoined
+        UserDefaults.standard.set(map, forKey: clubJoinStatesKey)
+    }
 
     // Offline write queue
     private let writeQueueKey = "community_write_queue"
     private struct QueuedWrite: Codable {
-        enum Kind: String, Codable { case join, contributions }
+        enum Kind: String, Codable { case join, contributions, clubJoin, invite }
         let kind: Kind
-        let challengeID: UUID
+        let challengeID: UUID?
         let isJoined: Bool?
         let items: [SupabaseCommunityDataSource.ContributionUpload]?
+        let clubID: UUID?
+        let usernames: [String]?
     }
     private func loadQueuedWrites() -> [QueuedWrite] {
         guard let data = UserDefaults.standard.data(forKey: writeQueueKey) else { return [] }
@@ -94,9 +121,18 @@ final class CommunityViewModel: ObservableObject {
                 copy.isJoined = persisted[c.id.uuidString] ?? false
                 return copy
             }
+            let clubs = try await dataSource.loadClubs()
+            let clubPersisted = loadClubJoinStates()
+            let adjustedClubs = clubs.map { cl -> Club in
+                var c = cl
+                c.isJoined = clubPersisted[cl.id.uuidString] ?? c.isJoined
+                return c
+            }
             await MainActor.run {
                 self.challenges = adjusted
                 self.leaderboard = lb
+                self.applyLeaderboardSort()
+                self.clubs = adjustedClubs
             }
             await flushOfflineQueue()
         }
@@ -113,7 +149,22 @@ final class CommunityViewModel: ObservableObject {
         Task {
             do { try await dataSource.setJoinState(challengeID: challengeID, isJoined: joined) }
             catch {
-                let op = QueuedWrite(kind: .join, challengeID: challengeID, isJoined: joined, items: nil as [SupabaseCommunityDataSource.ContributionUpload]?)
+                let op = QueuedWrite(kind: .join, challengeID: challengeID, isJoined: joined, items: nil as [SupabaseCommunityDataSource.ContributionUpload]?, clubID: nil, usernames: nil)
+                enqueue(op)
+            }
+        }
+    }
+
+    @MainActor
+    func toggleClubJoin(clubID: UUID) {
+        guard let idx = clubs.firstIndex(where: { $0.id == clubID }) else { return }
+        clubs[idx].isJoined.toggle()
+        saveClubJoinState(clubID: clubID, isJoined: clubs[idx].isJoined)
+        let joined = clubs[idx].isJoined
+        Task {
+            do { try await dataSource.setClubMembership(clubID: clubID, isJoined: joined) }
+            catch {
+                let op = QueuedWrite(kind: .clubJoin, challengeID: nil, isJoined: joined, items: nil, clubID: clubID, usernames: nil)
                 enqueue(op)
             }
         }
@@ -130,9 +181,22 @@ final class CommunityViewModel: ObservableObject {
         if autoJoin {
             do { try await dataSource.setJoinState(challengeID: created.id, isJoined: true) }
             catch {
-                let op = QueuedWrite(kind: .join, challengeID: created.id, isJoined: true, items: nil as [SupabaseCommunityDataSource.ContributionUpload]?)
+                let op = QueuedWrite(kind: .join, challengeID: created.id, isJoined: true, items: nil as [SupabaseCommunityDataSource.ContributionUpload]?, clubID: nil, usernames: nil)
                 enqueue(op)
             }
+        }
+    }
+
+    func createClub(name: String, description: String, isPublic: Bool) async throws {
+        let created = try await dataSource.createClub(name: name, description: description, isPublic: isPublic)
+        await MainActor.run {
+            self.clubs.insert(created, at: 0)
+            self.saveClubJoinState(clubID: created.id, isJoined: created.isJoined)
+        }
+        do { try await dataSource.setClubMembership(clubID: created.id, isJoined: created.isJoined) }
+        catch {
+            let op = QueuedWrite(kind: .clubJoin, challengeID: nil, isJoined: created.isJoined, items: nil, clubID: created.id, usernames: nil)
+            enqueue(op)
         }
     }
 
@@ -145,9 +209,37 @@ final class CommunityViewModel: ObservableObject {
                 .reduce(0.0) { $0 + $1.totalDistanceMeters }
             challenges[i].progressMeters = sum
         }
-        leaderboard.sort { $0.totalDistanceMeters > $1.totalDistanceMeters }
-        for i in leaderboard.indices { leaderboard[i].rank = i + 1 }
+        applyLeaderboardSort()
         Task { await syncContributionsForJoinedChallenges(from: store) }
+    }
+
+    @MainActor
+    func setLeaderboardSort(_ sort: LeaderboardSort) {
+        leaderboardSort = sort
+        applyLeaderboardSort()
+    }
+
+    @MainActor
+    private func applyLeaderboardSort() {
+        switch leaderboardSort {
+        case .distance:
+            leaderboard.sort { $0.totalDistanceMeters > $1.totalDistanceMeters }
+        case .pace:
+            // Sort by average pace (min/km) ascending; requires distance & duration
+            leaderboard.sort { a, b in
+                let aDur = a.totalDurationSeconds ?? 0
+                let bDur = b.totalDurationSeconds ?? 0
+                let aDist = max(a.totalDistanceMeters, 1)
+                let bDist = max(b.totalDistanceMeters, 1)
+                let aSecPerKm = aDur / (aDist / 1000.0)
+                let bSecPerKm = bDur / (bDist / 1000.0)
+                return aSecPerKm < bSecPerKm
+            }
+        case .streak:
+            // Sort by streak days descending
+            leaderboard.sort { ($0.currentStreakDays ?? 0) > ($1.currentStreakDays ?? 0) }
+        }
+        for i in leaderboard.indices { leaderboard[i].rank = i + 1 }
     }
 
     private func syncContributionsForJoinedChallenges(from store: ActivityStore) async {
@@ -168,11 +260,10 @@ final class CommunityViewModel: ObservableObject {
                 let lb = try await dataSource.loadLeaderboard()
                 await MainActor.run {
                     self.leaderboard = lb
-                    self.leaderboard.sort { $0.totalDistanceMeters > $1.totalDistanceMeters }
-                    for i in self.leaderboard.indices { self.leaderboard[i].rank = i + 1 }
+                    self.applyLeaderboardSort()
                 }
             } catch {
-                let op = QueuedWrite(kind: .contributions, challengeID: ch.id, isJoined: nil, items: items)
+                let op = QueuedWrite(kind: .contributions, challengeID: ch.id, isJoined: nil, items: items, clubID: nil, usernames: nil)
                 enqueue(op)
             }
         }
@@ -186,9 +277,13 @@ final class CommunityViewModel: ObservableObject {
             do {
                 switch op.kind {
                 case .join:
-                    try await dataSource.setJoinState(challengeID: op.challengeID, isJoined: op.isJoined ?? true)
+                    try await dataSource.setJoinState(challengeID: op.challengeID!, isJoined: op.isJoined ?? true)
                 case .contributions:
-                    try await dataSource.uploadDailyContributions(challengeID: op.challengeID, items: op.items ?? [])
+                    try await dataSource.uploadDailyContributions(challengeID: op.challengeID!, items: op.items ?? [])
+                case .clubJoin:
+                    try await dataSource.setClubMembership(clubID: op.clubID!, isJoined: op.isJoined ?? true)
+                case .invite:
+                    try await dataSource.inviteToChallenge(challengeID: op.challengeID!, usernames: op.usernames ?? [])
                 }
             } catch {
                 remaining.append(op)
@@ -209,6 +304,16 @@ final class CommunityViewModel: ObservableObject {
             var states = self.loadJoinStates()
             states.removeValue(forKey: challengeID.uuidString)
             UserDefaults.standard.set(states, forKey: self.joinStatesKey)
+        }
+    }
+
+    func inviteParticipants(challengeID: UUID, usernames: [String]) {
+        Task {
+            do { try await dataSource.inviteToChallenge(challengeID: challengeID, usernames: usernames) }
+            catch {
+                let op = QueuedWrite(kind: .invite, challengeID: challengeID, isJoined: nil, items: nil, clubID: nil, usernames: usernames)
+                enqueue(op)
+            }
         }
     }
 }

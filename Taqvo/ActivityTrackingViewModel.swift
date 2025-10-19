@@ -18,6 +18,16 @@ struct RouteSample {
     let timestamp: Date
 }
 
+struct ActivityMarker: Identifiable, Codable {
+    let id: UUID
+    let latitude: Double
+    let longitude: Double
+    let timestamp: Date
+    let note: String?
+    let photoPNG: Data?
+
+    var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
+}
 struct ActivitySummary {
     let distanceMeters: Double
     let durationSeconds: Double
@@ -27,6 +37,8 @@ struct ActivitySummary {
     let endDate: Date
     let kind: ActivityKind
     let caloriesKilocalories: Double
+    let stepsCount: Int?
+    let elevationGainMeters: Double?
     // Challenge metadata (optional)
     let linkedChallengeTitle: String?
     let linkedChallengeIsPublic: Bool?
@@ -39,6 +51,8 @@ struct ActivitySummary {
          endDate: Date,
          kind: ActivityKind,
          caloriesKilocalories: Double,
+         stepsCount: Int? = nil,
+         elevationGainMeters: Double? = nil,
          linkedChallengeTitle: String? = nil,
          linkedChallengeIsPublic: Bool? = nil) {
         self.distanceMeters = distanceMeters
@@ -49,6 +63,8 @@ struct ActivitySummary {
         self.endDate = endDate
         self.kind = kind
         self.caloriesKilocalories = caloriesKilocalories
+        self.stepsCount = stepsCount
+        self.elevationGainMeters = elevationGainMeters
         self.linkedChallengeTitle = linkedChallengeTitle
         self.linkedChallengeIsPublic = linkedChallengeIsPublic
     }
@@ -67,6 +83,14 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
     @Published var goalReached: Bool = false
     @Published var autoEndOnGoal: Bool = false
     @Published var activityKind: ActivityKind = .run
+    // Live metrics
+    @Published var currentCadenceSPM: Double? = nil
+    @Published var elevationGainMeters: Double = 0
+    // In-run markers
+    @Published var markers: [ActivityMarker] = []
+    // Live steps
+    @Published var totalSteps: Int = 0
+
     private let locationManager = CLLocationManager()
     private var locations: [CLLocation] = []
     private var timer: Timer?
@@ -92,6 +116,11 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
     private var minLowSpeedDurationToPause: TimeInterval = 3
     private var minHighSpeedDurationToResume: TimeInterval = 2
     private let minSessionSecondsForAutoPause: TimeInterval = 10
+
+    // Pedometer for cadence/steps
+    private var pedometer = CMPedometer()
+    private var lastAltitude: Double?
+    private let minElevationDeltaMeters: Double = 0.5
 
     var hasSession: Bool { startDate != nil }
 
@@ -145,12 +174,17 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
         routeCoordinates = []
         distanceMeters = 0
         durationSeconds = 0
+        elevationGainMeters = 0
+        lastAltitude = nil
+        markers = []
+        totalSteps = 0
         startDate = Date()
         isRunning = true
         goalReached = false
         nextHapticMeters = 1000.0
         haptic.prepare()
         startMotionUpdates()
+        startPedometerUpdates()
         locationManager.allowsBackgroundLocationUpdates = true
         locationManager.startUpdatingLocation()
         startTimer()
@@ -166,6 +200,7 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
         startDate = nil
         pauseDate = nil
         stopMotionUpdates()
+        stopPedometerUpdates()
         autoPaused = false
         manualPaused = false
         lowSpeedStart = nil
@@ -232,6 +267,15 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
                 if distanceMeters >= nextHapticMeters {
                     haptic.notificationOccurred(.success)
                     nextHapticMeters += 1000
+                }
+                // Elevation gain (only count positive delta with decent vertical accuracy)
+                let vAcc = loc.verticalAccuracy
+                if vAcc >= 0 && vAcc <= 10 { // reasonably accurate
+                    if let la = lastAltitude {
+                        let deltaAlt = loc.altitude - la
+                        if deltaAlt > minElevationDeltaMeters { elevationGainMeters += deltaAlt }
+                    }
+                    lastAltitude = loc.altitude
                 }
                 // Auto-pause/resume based on speed and motion
                 let speed = loc.speed // -1 if invalid
@@ -339,7 +383,9 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
             startDate: startDate ?? Date(),
             endDate: Date(),
             kind: activityKind,
-            caloriesKilocalories: estimateCalories()
+            caloriesKilocalories: estimateCalories(),
+            stepsCount: (totalSteps > 0 ? totalSteps : nil),
+            elevationGainMeters: (elevationGainMeters > 0 ? elevationGainMeters : nil)
         )
     }
 
@@ -444,8 +490,41 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
         motionStationary = false
         motionWalkingOrRunning = false
     }
+
+    private func startPedometerUpdates() {
+        guard CMPedometer.isCadenceAvailable() || CMPedometer.isStepCountingAvailable() else { return }
+        if let start = startDate {
+            pedometer.startUpdates(from: start) { [weak self] data, _ in
+                guard let self = self, let d = data else { return }
+                if let cadence = d.currentCadence?.doubleValue { self.currentCadenceSPM = cadence * 60.0 }
+                let steps = d.numberOfSteps.intValue
+                self.totalSteps = max(steps, 0)
+            }
+        }
+    }
+
+    private func stopPedometerUpdates() {
+        pedometer.stopUpdates()
+        currentCadenceSPM = nil
+    }
+
     func setTimeGoal(_ seconds: Double?) { timeGoalSeconds = seconds }
     func setDistanceGoal(_ meters: Double?) { distanceGoalMeters = meters }
+
+    // Add in-run marker at current coordinate with optional note and photo
+    func addMarker(note: String?, photo: UIImage?) {
+        guard let coord = (routeCoordinates.last ?? locations.last?.coordinate) else { return }
+        let trimmed = note?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let marker = ActivityMarker(
+            id: UUID(),
+            latitude: coord.latitude,
+            longitude: coord.longitude,
+            timestamp: Date(),
+            note: (trimmed?.isEmpty ?? true) ? nil : trimmed,
+            photoPNG: photo?.pngData()
+        )
+        markers.append(marker)
+    }
 }
 
 extension ActivitySummary {
@@ -459,6 +538,8 @@ extension ActivitySummary {
             endDate: self.endDate,
             kind: self.kind,
             caloriesKilocalories: self.caloriesKilocalories,
+            stepsCount: self.stepsCount,
+            elevationGainMeters: self.elevationGainMeters,
             linkedChallengeTitle: title,
             linkedChallengeIsPublic: isPublic
         )

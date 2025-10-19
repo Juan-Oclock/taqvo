@@ -7,9 +7,11 @@
 
 import SwiftUI
 import MapKit
+import UIKit
 
 struct MapRouteView: UIViewRepresentable {
     var route: [CLLocationCoordinate2D]
+    var markers: [ActivityMarker] = []
 
     class Coordinator: NSObject, MKMapViewDelegate {
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
@@ -20,6 +22,16 @@ struct MapRouteView: UIViewRepresentable {
                 return r
             }
             return MKOverlayRenderer(overlay: overlay)
+        }
+
+        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            if annotation is MKUserLocation { return nil }
+            let id = "taqvo.marker"
+            let view = mapView.dequeueReusableAnnotationView(withIdentifier: id) as? MKMarkerAnnotationView ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: id)
+            view.markerTintColor = .systemBlue
+            view.glyphImage = UIImage(systemName: "mappin")
+            view.canShowCallout = true
+            return view
         }
     }
 
@@ -47,6 +59,7 @@ struct MapRouteView: UIViewRepresentable {
         // Avoid CAMetalLayer warnings when the view hasn't been sized yet.
         guard map.bounds.width > 0 && map.bounds.height > 0 else { return }
 
+        // Overlays
         map.removeOverlays(map.overlays)
         if route.count > 1 {
             let polyline = MKPolyline(coordinates: route, count: route.count)
@@ -57,6 +70,18 @@ struct MapRouteView: UIViewRepresentable {
             let region = MKCoordinateRegion(center: last, latitudinalMeters: 800, longitudinalMeters: 800)
             map.setRegion(region, animated: true)
         }
+
+        // Annotations (markers)
+        let toRemove = map.annotations.filter { !($0 is MKUserLocation) }
+        map.removeAnnotations(toRemove)
+        let annotations: [MKPointAnnotation] = markers.map { m in
+            let ann = MKPointAnnotation()
+            ann.coordinate = m.coordinate
+            ann.title = m.note ?? "Marker"
+            if m.note == nil { ann.subtitle = m.timestamp.formatted(date: .omitted, time: .shortened) }
+            return ann
+        }
+        map.addAnnotations(annotations)
     }
 
     private func regionThatFits(region: MKCoordinateRegion, paddingScale: Double) -> MKCoordinateRegion {

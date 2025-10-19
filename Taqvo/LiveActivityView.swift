@@ -7,6 +7,7 @@
 
 import SwiftUI
 import MapKit
+import PhotosUI
 
 struct LiveActivityView: View {
     @EnvironmentObject var vm: ActivityTrackingViewModel
@@ -23,6 +24,12 @@ struct LiveActivityView: View {
     @State private var showSpotifyPicker: Bool = false
     @AppStorage("preferredMusicProvider") private var storedProviderString: String = MusicProvider.spotify.rawValue
     @State private var provider: MusicProvider = .spotify
+    @State private var showMetricsPanel: Bool = false
+    @State private var mapExpanded: Bool = false
+    @State private var showAddMarkerSheet: Bool = false
+    @State private var markerNote: String = ""
+    @State private var markerPhotoItem: PhotosPickerItem? = nil
+    @State private var markerPhoto: UIImage? = nil
 
     var body: some View {
         VStack(spacing: 12) {
@@ -39,9 +46,32 @@ struct LiveActivityView: View {
                 .padding(.horizontal, 2)
             }
 
-            MapRouteView(route: vm.routeCoordinates)
-                .frame(height: 260)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+            ZStack(alignment: .topTrailing) {
+                MapRouteView(route: vm.routeCoordinates, markers: vm.markers)
+                    .frame(height: mapExpanded ? 420 : 260)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                HStack(spacing: 8) {
+                    Button {
+                        withAnimation { mapExpanded.toggle() }
+                    } label: {
+                        Label(mapExpanded ? "Collapse" : "Expand", systemImage: mapExpanded ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                            .labelStyle(.iconOnly)
+                            .padding(8)
+                            .background(.ultraThinMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    Button {
+                        showAddMarkerSheet = true
+                    } label: {
+                        Image(systemName: "mappin.and.ellipse")
+                            .padding(8)
+                            .background(.ultraThinMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+                .padding(8)
+            }
 
             HStack(spacing: 16) {
                 VStack(alignment: .leading) {
@@ -49,6 +79,14 @@ struct LiveActivityView: View {
                         .font(.caption)
                         .foregroundColor(.taqvoAccentText)
                     Text(String(format: "%.2f km", vm.distanceMeters / 1000.0))
+                        .font(.title3).bold()
+                }
+                Spacer()
+                VStack(alignment: .center) {
+                    Text("Pace")
+                        .font(.caption)
+                        .foregroundColor(.taqvoAccentText)
+                    Text(ActivityTrackingViewModel.formattedPace(distanceMeters: vm.distanceMeters, durationSeconds: vm.durationSeconds))
                         .font(.title3).bold()
                 }
                 Spacer()
@@ -267,13 +305,64 @@ struct LiveActivityView: View {
         }
         .padding()
         .navigationTitle(appState.linkedChallengeTitle ?? "Live Activity")
+        .safeAreaInset(edge: .bottom) {
+        VStack(spacing: 8) {
+        Capsule()
+        .fill(Color.taqvoAccentText.opacity(0.4))
+        .frame(width: 40, height: 5)
+        .padding(.top, 6)
+        .onTapGesture { withAnimation { showMetricsPanel.toggle() } }
+        if showMetricsPanel {
+        HStack(spacing: 16) {
+        VStack(alignment: .leading) {
+        Text("Cadence")
+        .font(.caption)
+        .foregroundColor(.taqvoAccentText)
+        Text(vm.currentCadenceSPM.map { String(format: "%.0f spm", $0) } ?? "—")
+        .font(.title3).bold()
+        }
+        Spacer()
+        VStack(alignment: .center) {
+        Text("Steps")
+        .font(.caption)
+        .foregroundColor(.taqvoAccentText)
+        Text(String(vm.totalSteps))
+        .font(.title3).bold()
+        }
+        Spacer()
+        VStack(alignment: .trailing) {
+        Text("Elevation")
+        .font(.caption)
+        .foregroundColor(.taqvoAccentText)
+        Text(String(format: "%.0f m", max(0, vm.elevationGainMeters)))
+        .font(.title3).bold()
+        }
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        } else {
+        Text("Swipe up for cadence, steps & elevation")
+        .font(.caption)
+        .foregroundColor(.taqvoAccentText)
+        .transition(.opacity)
+        }
+        }
+        .padding(.horizontal)
+        .padding(.bottom, 8)
+        .background(.ultraThinMaterial)
+        .contentShape(Rectangle())
+        .gesture(
+        DragGesture(minimumDistance: 8)
+        .onEnded { value in
+        if value.translation.height < 0 { withAnimation { showMetricsPanel = true } }
+        else if value.translation.height > 0 { withAnimation { showMetricsPanel = false } }
+        }
+        )
+        }
         .sheet(isPresented: $showSummary, onDismiss: {
-            // After summary, leave live view
             appState.linkedChallengeTitle = nil
             appState.linkedChallengeIsPublic = nil
             dismiss()
         }) {
-            // Always render summary content; fall back to current vm state if needed
             PostRunSummaryView(summary: (summary ?? vm.summary()).withChallenge(title: appState.linkedChallengeTitle, isPublic: appState.linkedChallengeIsPublic))
         }
         .sheet(isPresented: $showPlaylistPicker) {
@@ -282,7 +371,54 @@ struct LiveActivityView: View {
         .sheet(isPresented: $showSpotifyPicker) {
             SpotifyPlaylistPickerView(spotifyVM: spotifyVM)
         }
-        // Updated onAppear to auto-detect active provider and persist it
+        .sheet(isPresented: $showAddMarkerSheet) {
+            NavigationView {
+                Form {
+                    Section(header: Text("Note")) {
+                        TextField("Optional note", text: $markerNote)
+                    }
+                    Section(header: Text("Photo")) {
+                        PhotosPicker(selection: $markerPhotoItem, matching: .images) {
+                            HStack {
+                                Image(systemName: "photo")
+                                Text(markerPhoto == nil ? "Choose Photo" : "Change Photo")
+                            }
+                        }
+                        if let img = markerPhoto {
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxHeight: 180)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                }
+                .navigationTitle("Add Marker")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showAddMarkerSheet = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") {
+                            vm.addMarker(note: markerNote, photo: markerPhoto)
+                            markerNote = ""
+                            markerPhoto = nil
+                            markerPhotoItem = nil
+                            showAddMarkerSheet = false
+                        }
+                        .disabled(!vm.hasSession)
+                    }
+                }
+            }
+        }
+        .onChange(of: markerPhotoItem) { _, item in
+            guard let item = item else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) {
+                    await MainActor.run { self.markerPhoto = img }
+                }
+            }
+        }
         .onAppear {
             if !vm.isRunning && !vm.hasSession {
                 vm.start()
@@ -311,7 +447,6 @@ struct LiveActivityView: View {
                 }
             }
         }
-        // Switch provider automatically if playback starts on either service
         .onChange(of: musicVM.isPlaying) { _, playing in
             if playing {
                 provider = .apple
@@ -362,7 +497,6 @@ struct LiveActivityView: View {
             Text("You reached your goal. End the run?")
         }
         .onDisappear {
-            // Safety: clear link if user backs out without stopping
             appState.linkedChallengeTitle = nil
             appState.linkedChallengeIsPublic = nil
         }
@@ -373,11 +507,8 @@ struct LiveActivityView: View {
         let h = s / 3600
         let m = (s % 3600) / 60
         let sec = s % 60
-        if h > 0 {
-            return String(format: "%d:%02d:%02d", h, m, sec)
-        } else {
-            return String(format: "%02d:%02d", m, sec)
-        }
+        if h > 0 { return String(format: "%d:%02d:%02d", h, m, sec) }
+        return String(format: "%02d:%02d", m, sec)
     }
 }
 

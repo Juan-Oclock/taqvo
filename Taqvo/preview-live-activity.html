@@ -36,9 +36,11 @@
     .flag { color: var(--cta); }
     .map {
       height: 220px; border-radius: 16px; background: linear-gradient(180deg, #2a2a2d, #202023);
-      display: grid; place-items: center; color: #888;
+      display: grid; place-items: center; color: #888; position: relative;
     }
-    .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .map .controls { position: absolute; top: 8px; right: 8px; display: flex; gap: 8px; }
+    .chip { padding: 6px 8px; background: rgba(255,255,255,.06); border-radius: 10px; color: var(--text); font-size: 12px; cursor: pointer; }
+    .metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
     .metric label { color: var(--muted); font-size: 12px; }
     .metric div { font-weight: 700; font-size: 18px; }
     .section-title { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
@@ -58,6 +60,13 @@
     .input {
       width: 100%; background: #0f0f10; color: var(--text); border: 1px solid #2a2a2d; border-radius: 10px; padding: 8px 10px;
     }
+    .bottom-panel {
+      position: sticky; bottom: 0; background: rgba(255,255,255,.06); backdrop-filter: blur(8px);
+      border-radius: 16px; padding: 8px 12px; margin-top: 12px;
+    }
+    .handle { width: 40px; height: 5px; background: rgba(255,255,255,.2); border-radius: 999px; margin: 4px auto 8px; }
+    .panel-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .center { text-align: center; color: var(--muted); font-size: 12px; }
   </style>
 </head>
 <body>
@@ -73,13 +82,23 @@
       </div>
 
       <div class="spacer"></div>
-      <div class="map">MapRouteView placeholder</div>
+      <div class="map">
+        MapRouteView placeholder
+        <div class="controls">
+          <div id="expand" class="chip">Expand</div>
+          <div class="chip">Add Marker</div>
+        </div>
+      </div>
 
       <div class="spacer"></div>
       <div class="metrics">
         <div class="metric">
           <label>Distance</label>
           <div id="distance">1.24 km</div>
+        </div>
+        <div class="metric" style="text-align:center">
+          <label>Pace</label>
+          <div id="pace">6:00 min/km</div>
         </div>
         <div class="metric" style="text-align:right">
           <label>Duration</label>
@@ -98,6 +117,11 @@
         <button class="btn warn">Pause</button>
         <button class="btn danger">Stop</button>
       </div>
+
+      <div class="bottom-panel" id="panel">
+        <div class="handle"></div>
+        <div id="panelContent" class="center">Swipe up for cadence, steps & elevation</div>
+      </div>
     </div>
   </div>
   <script>
@@ -106,6 +130,10 @@
     const titleEl = document.getElementById('challengeTitle');
     const apply = document.getElementById('applyBtn');
     const bar = document.getElementById('bar');
+    const expand = document.getElementById('expand');
+    const map = document.querySelector('.map');
+    const panel = document.getElementById('panel');
+    const panelContent = document.getElementById('panelContent');
 
     function setTitle(t) {
       titleEl.textContent = t;
@@ -117,6 +145,22 @@
 
     // Demo: animate progress to 12%
     requestAnimationFrame(() => { bar.style.width = '12%'; });
+
+    // Expand/collapse map demo
+    expand.addEventListener('click', () => {
+      const isExpanded = map.style.height === '360px';
+      map.style.height = isExpanded ? '220px' : '360px';
+      expand.textContent = isExpanded ? 'Expand' : 'Collapse';
+    });
+
+    // Simple panel toggle demo
+    let panelOpen = false;
+    panel.addEventListener('click', () => {
+      panelOpen = !panelOpen;
+      panelContent.innerHTML = panelOpen
+        ? `<div class="panel-grid"><div><div class="muted">Cadence</div><div style="font-weight:700;font-size:18px">172 spm</div></div><div style="text-align:center"><div class="muted">Steps</div><div style="font-weight:700;font-size:18px">412</div></div><div style="text-align:right"><div class="muted">Elevation</div><div style="font-weight:700;font-size:18px">24 m</div></div></div>`
+        : 'Swipe up for cadence, steps & elevation';
+    });
 
     // Prefill a sample
     setTitle('7-Day Sprint');

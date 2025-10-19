@@ -32,6 +32,11 @@ struct ActivityDetailView: View {
         return String(format: "%.2f km/h", kmh)
     }
 
+    private var navigationTitleText: String {
+        let t = (activity.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? "Activity Detail" : t
+    }
+
     private var splits: [Double] {
         // Prefer stored real splits; fallback to coarse distance-based allocation
         if let stored = activity.splitsSeconds, !stored.isEmpty {
@@ -145,7 +150,7 @@ struct ActivityDetailView: View {
                         .font(.caption)
                         .foregroundColor(.taqvoAccentText)
                     Spacer()
-                    Text(stepsCount.map(String.init) ?? "—")
+                    Text((stepsCount ?? activity.stepsCount).map { String($0) } ?? "—")
                         .font(.headline)
                 }
 
@@ -155,7 +160,7 @@ struct ActivityDetailView: View {
                         .font(.caption)
                         .foregroundColor(.taqvoAccentText)
                     Spacer()
-                    Text(elevationGainMeters.map { String(format: "%.0f m", $0) } ?? "—")
+                    Text((elevationGainMeters ?? activity.elevationGainMeters).map { String(format: "%.0f m", $0) } ?? "—")
                         .font(.headline)
                 }
 
@@ -163,12 +168,12 @@ struct ActivityDetailView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Splits")
                         .font(.headline)
-                    ForEach(Array(splits.enumerated()), id: \.offset) { idx, seconds in
+                    ForEach(splits.indices, id: \.self) { idx in
                         HStack {
                             Text("Km \(idx + 1)")
                                 .foregroundColor(.taqvoAccentText)
                             Spacer()
-                            Text(ActivityTrackingViewModel.formattedDuration(seconds))
+                            Text(ActivityTrackingViewModel.formattedDuration(splits[idx]))
                                 .font(.body).monospacedDigit()
                         }
                         .padding(.vertical, 4)
@@ -186,7 +191,7 @@ struct ActivityDetailView: View {
             }
             .padding()
         }
-        .navigationTitle("Activity Detail")
+        .navigationTitle(navigationTitleText)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(role: .destructive) {

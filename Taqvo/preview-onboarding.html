@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Taqvo Onboarding Preview</title>
+  <style>
+    body { background: #1D1F25; color: #fff; font-family: -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif; }
+    .wrap { max-width: 720px; margin: 40px auto; padding: 0 16px; }
+    h1 { font-size: 24px; margin-bottom: 8px; }
+    h2 { font-size: 18px; margin-top: 24px; }
+    .card { background: #111317; border-radius: 12px; padding: 16px; margin-top: 12px; }
+    .cta { display: inline-block; background: #00E5A1; color: #111; padding: 8px 12px; border-radius: 10px; text-decoration: none; font-weight: 600; }
+    code { background: #0f1114; padding: 2px 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Onboarding Preview</h1>
+    <p>This page describes the expected UI after adding the new login screen before the permissions screen.</p>
+
+    <div class="card">
+      <h2>Screen Order</h2>
+      <ol>
+        <li>Intro: Smart Motion Tracking (auto-advances)</li>
+        <li>Brand Accent: "taqvo" scale + bounce</li>
+        <li>Login: Sign in with Apple, Sign in with Email</li>
+        <li>Permissions: Location, Motion & Fitness, Background Tracking + Continue</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>Login Screen</h2>
+      <ul>
+        <li>Apple: Calls <code>SupabaseAuthManager.shared.signInWithApple()</code></li>
+        <li>Email: Opens a sheet to enter email (placeholder implementation)</li>
+      </ul>
+      <p>Swipe left/right in the app’s onboarding to view the new login screen inserted before permissions.</p>
+    </div>
+
+    <div class="card">
+      <h2>Notes</h2>
+      <ul>
+        <li>Google sign-in will be added later.</li>
+        <li>Email sign-in currently shows a placeholder alert in the sheet.</li>
+      </ul>
+    </div>
+
+    <p style="margin-top:24px"><a class="cta" href="#login">Focus: Login Screen</a></p>
+  </div>
+</body>
+</html>

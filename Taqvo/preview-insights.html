@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Insights Preview</title>
+  <style>
+    :root {
+      --cta: #36c;
+      --textDark: #222;
+      --textLight: #fff;
+      --accentText: #666;
+      --card: #f7f7fa;
+      --border: #ddd;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 24px; background: #fafafa; color: var(--textDark); }
+    h1 { font-size: 20px; margin: 0 0 12px 0; }
+    .section { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .row { display: flex; align-items: center; gap: 12px; }
+    .space { flex: 1; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 12px; background: #eee; font-size: 12px; margin-right: 8px; margin-bottom: 8px; }
+    .chip .icon { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+    .muted { color: var(--accentText); font-size: 12px; }
+    .circle { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+    .active { background: var(--cta); }
+    .inactive { background: rgba(0,0,0,0.15); }
+    .value { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+  <div class="section">
+    <h1>Streak</h1>
+    <div class="row">
+      <div class="muted">Current</div>
+      <div class="space"></div>
+      <div class="value" id="currentStreak">—</div>
+    </div>
+    <div id="streakRow" style="margin-top:8px;"></div>
+    <div class="row" style="margin-top:8px;">
+      <div class="muted">Best streak</div>
+      <div class="space"></div>
+      <div class="value" id="bestStreak">—</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h1>Compare Weeks</h1>
+    <div class="row">
+      <div>
+        <div class="muted">Distance</div>
+        <div class="value" id="distDelta">—</div>
+      </div>
+      <div class="space"></div>
+      <div style="text-align:right;">
+        <div class="muted">Duration</div>
+        <div class="value" id="durDelta">—</div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <div>
+        <div class="muted">Pace</div>
+        <div class="value" id="paceDelta">—</div>
+      </div>
+      <div class="space"></div>
+      <div style="text-align:right;">
+        <div class="muted">Runs</div>
+        <div class="value" id="runDelta">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h1>Milestones</h1>
+    <div id="milestones"></div>
+  </div>
+
+  <script>
+    // Demo data
+    const activities = [
+      // Last 10 days active, with two gaps earlier
+      ...Array.from({length: 10}, (_, i) => ({ endDate: Date.now() - i*86400000, km: 5 + (i%3) }))
+    ];
+    const weekly = [
+      { start: Date.now() - 7*86400000, distMeters: 32000, durSeconds: 11200, runs: 5 }, // current week
+      { start: Date.now() - 14*86400000, distMeters: 28000, durSeconds: 12000, runs: 4 }, // previous week
+    ];
+
+    function startOfDay(ts) { const d = new Date(ts); d.setHours(0,0,0,0); return d.getTime(); }
+    function toSet(arr) { const s = new Set(); arr.forEach(ts => s.add(ts)); return s; }
+
+    // Streaks
+    const daysSet = toSet(activities.map(a => startOfDay(a.endDate)));
+    let streak = 0; let day = startOfDay(Date.now());
+    while (daysSet.has(day)) { streak++; day -= 86400000; }
+    document.getElementById('currentStreak').textContent = `${streak} days`;
+    // Best streak
+    const sortedDays = Array.from(daysSet).sort((a,b) => a-b);
+    let best = 0; let cur = 0; let prev = null;
+    sortedDays.forEach(d => { if (prev !== null && d === prev + 86400000) { cur++; } else { cur = 1; } best = Math.max(best, cur); prev = d; });
+    document.getElementById('bestStreak').textContent = `${best} days`;
+    // Visual row of last 14 days
+    const row = document.getElementById('streakRow');
+    const today = startOfDay(Date.now());
+    for (let i=13;i>=0;i--) {
+      const d = today - i*86400000;
+      const el = document.createElement('span');
+      el.className = `circle ${daysSet.has(d) ? 'active' : 'inactive'}`;
+      row.appendChild(el);
+    }
+
+    // Compare Weeks
+    const curWeek = weekly[0], prevW = weekly[1];
+    const distDelta = (curWeek.distMeters - prevW.distMeters)/1000;
+    const distPct = prevW.distMeters > 0 ? (distDelta*1000 / prevW.distMeters) * 100 : 0;
+    const durDeltaMin = (curWeek.durSeconds - prevW.durSeconds)/60;
+    const paceCur = curWeek.durSeconds / (curWeek.distMeters/1000) / 60; // min/km
+    const pacePrev = prevW.durSeconds / (prevW.distMeters/1000) / 60;
+    const paceDelta = paceCur - pacePrev;
+    const runDelta = curWeek.runs - prevW.runs;
+    document.getElementById('distDelta').textContent = `${distDelta>0?'+':''}${distDelta.toFixed(2)} km (${distPct>0?'+':''}${distPct.toFixed(0)}%)`;
+    document.getElementById('durDelta').textContent = `${durDeltaMin>0?'+':''}${Math.round(durDeltaMin)} min`;
+    document.getElementById('paceDelta').textContent = `${paceDelta>0?'+':''}${paceDelta.toFixed(2)} min/km`;
+    document.getElementById('runDelta').textContent = `${runDelta>0?'+':''}${runDelta}`;
+
+    // Milestones
+    const totalMeters = activities.reduce((sum,a) => sum + a.km*1000, 0);
+    const longestMeters = Math.max(...activities.map(a => a.km*1000));
+    const milestones = [
+      { title: '5K', ok: longestMeters >= 5000 },
+      { title: '10K', ok: longestMeters >= 10000 },
+      { title: 'Half (21K)', ok: longestMeters >= 21097 },
+      { title: 'Marathon (42K)', ok: longestMeters >= 42195 },
+      { title: '100K total', ok: totalMeters >= 100000 },
+      { title: '250K total', ok: totalMeters >= 250000 },
+      { title: '500K total', ok: totalMeters >= 500000 },
+    ];
+    const msEl = document.getElementById('milestones');
+    milestones.forEach(m => {
+      const chip = document.createElement('div'); chip.className = 'chip';
+      const icon = document.createElement('span'); icon.className = 'icon'; icon.style.background = m.ok ? 'var(--cta)' : 'rgba(0,0,0,0.15)';
+      const label = document.createElement('span'); label.textContent = m.title; label.className = m.ok ? '' : 'muted';
+      chip.appendChild(icon); chip.appendChild(label);
+      msEl.appendChild(chip);
+    });
+  </script>
+</body>
+</html>

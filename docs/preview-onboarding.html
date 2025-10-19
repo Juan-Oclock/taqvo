@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Taqvo Onboarding – Preview</title>
+  <style>
+    :root {
+      --bg: #1D1F25;
+      --title: #F6F8FA;
+      --tagline: rgba(255,255,255,0.7);
+      --cta: #A8FF60;
+      --muted: #818181;
+      --welcome: #A2A2A2;
+      --btnText: #111111;
+    }
+    html, body { height: 100%; }
+    body { margin: 0; padding: 0; background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    .wrap { position: relative; width: 100%; height: 100%; overflow: hidden; }
+    .screen { position: absolute; inset: 0; display: none; box-sizing: border-box; padding: 32px; }
+    .screen.active { display: block; }
+    .stack { display: flex; flex-direction: column; gap: 16px; }
+    .title { font-weight: 700; font-size: 48px; line-height: 1.1; color: var(--title); letter-spacing: -0.5px; }
+    .tagline { font-weight: 500; font-size: 18px; line-height: 1.35; color: var(--tagline); margin-top: 8px; }
+    .brand { font-weight: 700; font-size: 96px; line-height: 1.0; color: var(--cta); text-align: center; }
+    .nav { position: absolute; top: 20px; right: 24px; display: flex; gap: 12px; }
+    .btn { background: transparent; border: 1px solid rgba(255,255,255,0.15); color: rgba(255,255,255,0.85); padding: 8px 12px; border-radius: 10px; cursor: pointer; font-size: 14px; }
+    .btn.cta { background: var(--cta); color: var(--btnText); border-color: var(--cta); font-weight: 700; }
+    .dots { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.25); }
+    .dot.active { background: rgba(255,255,255,0.85); }
+    /* Layout anchors */
+    .center-left { display: grid; align-items: center; justify-items: start; width: 100%; height: 100%; }
+    .center { display: grid; place-items: center; width: 100%; height: 100%; }
+    .top-left { position: absolute; top: 32px; left: 32px; }
+    .muted { color: var(--muted); font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+    .welcome { color: var(--welcome); font-weight: 300; font-size: 46px; }
+    .cta-row { position: absolute; bottom: 32px; left: 32px; display: flex; flex-direction: column; gap: 16px; max-width: 560px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="nav">
+      <button class="btn" onclick="prev()">Back</button>
+      <button class="btn" onclick="next()">Next</button>
+      <button class="btn" onclick="skip()">Skip</button>
+    </div>
+
+    <!-- Screen 1: smart motion tracking -->
+    <section class="screen active" id="s1">
+      <div class="center-left">
+        <div class="stack" style="padding: 0 32px;">
+          <div class="title">smart motion tracking</div>
+          <div class="tagline">Every Step, Every Stride, Every....</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Screen 2: big TAQVO brand -->
+    <section class="screen" id="s2">
+      <div class="center">
+        <div class="brand">taqvo</div>
+      </div>
+    </section>
+
+    <!-- Screen 3: welcome, brand, tagline, CTA -->
+    <section class="screen" id="s3">
+      <div class="top-left">
+        <div class="muted">taqvo</div>
+        <div class="welcome">Welcome to</div>
+      </div>
+      <div class="center">
+        <div class="brand">taqvo</div>
+      </div>
+      <div class="cta-row">
+        <div class="tagline">Track your runs, walks, and strides — smarter than ever.</div>
+        <button class="btn cta" onclick="start()">GET STARTED</button>
+      </div>
+    </section>
+
+    <div class="dots">
+      <div class="dot active" id="d1"></div>
+      <div class="dot" id="d2"></div>
+      <div class="dot" id="d3"></div>
+    </div>
+  </div>
+
+  <script>
+    let idx = 0; // 0..2
+    const screens = [document.getElementById('s1'), document.getElementById('s2'), document.getElementById('s3')];
+    const dots = [document.getElementById('d1'), document.getElementById('d2'), document.getElementById('d3')];
+
+    function update() {
+      screens.forEach((el, i) => el.classList.toggle('active', i === idx));
+      dots.forEach((el, i) => el.classList.toggle('active', i === idx));
+    }
+    function next() { idx = Math.min(2, idx + 1); update(); }
+    function prev() { idx = Math.max(0, idx - 1); update(); }
+    function skip() { alert('Onboarding skipped (preview only).'); idx = 2; update(); }
+    function start() { alert('GET STARTED clicked (preview only).'); }
+
+    const hash = location.hash.replace('#', '');
+    if (['1','2','3'].includes(hash)) { idx = parseInt(hash, 10) - 1; update(); }
+  </script>
+</body>
+</html>

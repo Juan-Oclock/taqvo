@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Community Preview</title>
+  <style>
+    :root {
+      --cta: #36c;
+      --textDark: #222;
+      --textLight: #fff;
+      --accentText: #666;
+      --card: #f7f7fa;
+      --border: #ddd;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 24px; background: #fafafa; color: var(--textDark); }
+    h1 { font-size: 20px; margin: 0 0 12px 0; }
+    .section { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .row { display: flex; align-items: center; gap: 12px; }
+    .space { flex: 1; }
+    .btn { background: var(--cta); color: var(--textLight); border: none; border-radius: 16px; padding: 8px 12px; cursor: pointer; }
+    .btn.outline { background: transparent; color: var(--cta); border: 1px solid var(--cta); }
+    .muted { color: var(--accentText); font-size: 12px; }
+    .list { display: flex; flex-direction: column; gap: 8px; }
+    .chip { font-size: 12px; color: var(--accentText); }
+    .input { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border); }
+    .segmented { display: inline-flex; background: #eee; border-radius: 8px; overflow: hidden; }
+    .segmented button { padding: 6px 10px; border: none; background: transparent; cursor: pointer; }
+    .segmented button.active { background: #ddd; }
+    .value { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+  <div class="section">
+    <h1>Leaderboard Filters</h1>
+    <div class="segmented" id="sortPicker">
+      <button data-sort="distance" class="active">Distance</button>
+      <button data-sort="pace">Pace</button>
+      <button data-sort="streak">Streak</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <h1>Leaderboard</h1>
+    <div class="list" id="leaderboard"></div>
+  </div>
+
+  <div class="section">
+    <h1>Clubs</h1>
+    <div class="list" id="clubs"></div>
+    <div class="row" style="margin-top:12px;">
+      <input class="input" id="clubName" placeholder="New club name" />
+      <button class="btn" id="createClub">Create Club</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <h1>Invite Participants</h1>
+    <div class="muted">Enter comma-separated usernames</div>
+    <div class="row" style="margin-top:8px;">
+      <input class="input" id="inviteNames" placeholder="alice, bob, charlie" />
+      <button class="btn outline" id="sendInvites">Send Invites</button>
+    </div>
+    <div class="muted" id="inviteStatus"></div>
+  </div>
+
+  <script>
+    const leaderboardData = [
+      { id: '1', name: 'Alex', dist: 42000, dur: 14000, streak: 6 },
+      { id: '2', name: 'Sam', dist: 38000, dur: 13000, streak: 8 },
+      { id: '3', name: 'Taylor', dist: 35000, dur: 12000, streak: 3 },
+      { id: '4', name: 'Jordan', dist: 33000, dur: 11000, streak: 2 },
+      { id: '5', name: 'Riley', dist: 30000, dur: 10000, streak: 5 },
+    ];
+
+    const clubs = [
+      { id: 'c1', name: 'Downtown Runners', description: 'Local running group.', joined: false, members: 124 },
+      { id: 'c2', name: 'Trail Blazers', description: 'Trail and ultra crew.', joined: true, members: 58 },
+    ];
+
+    const state = { sort: 'distance' };
+
+    function formatKm(meters) { return `${(meters/1000).toFixed(1)} km`; }
+    function formatPace(distMeters, durSeconds) {
+      const pace = durSeconds / (distMeters / 1000);
+      const mm = Math.floor(pace/60), ss = Math.floor(pace % 60);
+      return `${mm}:${String(ss).padStart(2,'0')} min/km`;
+    }
+
+    function rankLeaderboard() {
+      let rows = [...leaderboardData];
+      if (state.sort === 'distance') {
+        rows.sort((a,b) => b.dist - a.dist);
+      } else if (state.sort === 'pace') {
+        rows.sort((a,b) => (a.dur/(a.dist/1000)) - (b.dur/(b.dist/1000)));
+      } else if (state.sort === 'streak') {
+        rows.sort((a,b) => b.streak - a.streak);
+      }
+      rows.forEach((r, i) => r.rank = i+1);
+      return rows;
+    }
+
+    function renderLeaderboard() {
+      const el = document.getElementById('leaderboard');
+      el.innerHTML = '';
+      rankLeaderboard().forEach(r => {
+        const row = document.createElement('div');
+        row.className = 'row';
+        const left = document.createElement('div');
+        left.textContent = `#${r.rank} ${r.name}`;
+        const space = document.createElement('div'); space.className = 'space';
+        const right = document.createElement('div');
+        right.innerHTML = `<div class="value">${formatKm(r.dist)}</div>` +
+                          `<div class="muted">${formatPace(r.dist, r.dur)}</div>` +
+                          (r.streak ? `<div class="chip">${r.streak}d streak</div>` : '');
+        row.appendChild(left); row.appendChild(space); row.appendChild(right);
+        el.appendChild(row);
+      });
+    }
+
+    function renderClubs() {
+      const el = document.getElementById('clubs');
+      el.innerHTML = '';
+      clubs.forEach(c => {
+        const row = document.createElement('div'); row.className = 'row';
+        const left = document.createElement('div'); left.innerHTML = `<div>${c.name}</div><div class="muted">${c.description}</div>`;
+        const space = document.createElement('div'); space.className = 'space';
+        const btn = document.createElement('button'); btn.className = 'btn'; btn.textContent = c.joined ? 'Leave' : 'Join';
+        btn.onclick = () => { c.joined = !c.joined; renderClubs(); };
+        row.appendChild(left); row.appendChild(space); row.appendChild(btn);
+        el.appendChild(row);
+      });
+    }
+
+    document.getElementById('sortPicker').addEventListener('click', (e) => {
+      if (e.target.tagName === 'BUTTON') {
+        state.sort = e.target.dataset.sort;
+        [...document.querySelectorAll('#sortPicker button')].forEach(b => b.classList.toggle('active', b===e.target));
+        renderLeaderboard();
+      }
+    });
+
+    document.getElementById('createClub').addEventListener('click', () => {
+      const name = document.getElementById('clubName').value.trim();
+      if (!name) return;
+      clubs.unshift({ id: `c${Date.now()}`, name, description: 'New club', joined: true, members: 1 });
+      document.getElementById('clubName').value = '';
+      renderClubs();
+    });
+
+    document.getElementById('sendInvites').addEventListener('click', () => {
+      const raw = document.getElementById('inviteNames').value.trim();
+      const names = raw.split(',').map(s => s.trim()).filter(Boolean);
+      document.getElementById('inviteStatus').textContent = names.length ? `Invited: ${names.join(', ')}` : 'Enter at least one username.';
+    });
+
+    renderLeaderboard();
+    renderClubs();
+  </script>
+</body>
+</html>

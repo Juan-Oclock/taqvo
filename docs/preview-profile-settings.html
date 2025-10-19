@@ -15,7 +15,7 @@
     .wrap { max-width: 880px; margin: 24px auto; padding: 0 16px; }
     h1 { font-size: 24px; margin: 12px 0 16px; }
     .card { background: rgba(0,0,0,0.08); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-    .row { display: flex; align-items: center; justify-content: space-between; margin: 8px 0; }
+    .row { display: flex; align-items: center; justify-content: space-between; margin: 8px 0; gap: 12px; }
     .caption { color: var(--accent); font-size: 12px; }
     .btn { background: var(--cta); color: #0F1316; border: none; border-radius: 12px; padding: 8px 12px; font-weight: 600; cursor: pointer; }
     .btn:disabled { opacity: 0.6; cursor: default; }
@@ -26,6 +26,9 @@
     .toggle input { width: 36px; height: 20px; }
     .badge { color: var(--cta); font-weight: 600; }
     a { color: var(--cta); }
+    .avatar { width: 72px; height: 72px; border-radius: 50%; background: rgba(0,0,0,0.12); display: grid; place-items: center; color: var(--accent); font-size: 28px; }
+    .bio { flex: 1; }
+    input[type="text"] { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.12); color: var(--text-dark); }
   </style>
 </head>
 <body>
@@ -40,6 +43,18 @@
         <button>Dark</button>
       </div>
       <p class="caption">Typography: Helvetica Neue per PRD</p>
+    </div>
+
+    <div class="card">
+      <h2>Profile</h2>
+      <div class="row">
+        <div class="avatar">👤</div>
+        <div class="bio">
+          <input type="text" placeholder="Add a short bio" />
+          <div style="height:8px"></div>
+          <button class="btn">Edit Photo</button>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -64,6 +79,59 @@
       <div class="row">
         <label class="toggle"><input type="checkbox" checked /> Auto stop music when run ends</label>
       </div>
+    </div>
+
+    <div class="card">
+      <h2>Activity Visibility</h2>
+      <div class="seg" role="tablist" aria-label="Post Visibility">
+        <button class="active">Public</button>
+        <button>Friends</button>
+        <button>Private</button>
+      </div>
+      <p class="caption">Controls default privacy for new feed posts.</p>
+    </div>
+
+    <div class="card">
+      <h2>Notifications</h2>
+      <div class="row"><label class="toggle"><input type="checkbox" checked /> Goal completion</label></div>
+      <div class="row"><label class="toggle"><input type="checkbox" checked /> New followers</label></div>
+      <div class="row"><label class="toggle"><input type="checkbox" checked /> Comments on my posts</label></div>
+      <div class="row"><label class="toggle"><input type="checkbox" checked /> Weekly stats recap</label></div>
+    </div>
+
+    <div class="card">
+      <h2>Language</h2>
+      <select>
+        <option>English</option>
+        <option>Spanish</option>
+        <option>French</option>
+        <option>German</option>
+        <option>Portuguese</option>
+        <option>Japanese</option>
+      </select>
+      <p class="caption">Applies to UI labels (requires app restart).</p>
+    </div>
+
+    <div class="card">
+      <h2>Account</h2>
+      <div class="row">
+        <div>
+          <div>Supabase</div>
+          <div class="caption">Authentication status</div>
+        </div>
+        <span class="badge">Signed in</span>
+      </div>
+      <div class="row">
+        <button class="btn">Sign out</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Support & Help</h2>
+      <div class="row"><a href="#">Help &amp; FAQ</a></div>
+      <div class="row"><a href="mailto:support@taqvo.app">Contact Support</a></div>
+      <div class="row"><a href="#">Privacy Policy</a></div>
+      <div class="row"><a href="#">Terms of Service</a></div>
     </div>
 
     <div class="card">
@@ -106,7 +174,7 @@
     </div>
 
     <p class="caption">This static preview reflects the SwiftUI Profile settings layout and styles.</p>
-    <p class="caption">Related docs: <a href="preview-spotify-integration.html" target="_blank">Spotify integration preview</a></p>
+    <p class="caption">Related docs: <a href="../preview-spotify-integration.html" target="_blank">Spotify integration preview</a></p>
   </div>
 </body>
 </html>

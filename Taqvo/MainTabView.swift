@@ -8,6 +8,7 @@
 import SwiftUI
 import UIKit
 import Charts
+import PhotosUI
 
 struct MainTabView: View {
     @EnvironmentObject var appState: AppState
@@ -264,6 +265,26 @@ struct ActivityView: View {
     }
 }
 
+struct SupportView: View {
+    var body: some View {
+        List {
+            Section("Help & FAQ") {
+                Text("Getting started with Taqvo")
+                Text("Tracking accuracy and tips")
+                Text("Sharing and privacy settings")
+            }
+            Section("Contact") {
+                Link("Email support", destination: URL(string: "mailto:support@taqvo.app")!)
+                Link("Privacy Policy", destination: URL(string: "https://taqvo.app/privacy")!)
+                Link("Terms of Service", destination: URL(string: "https://taqvo.app/terms")!)
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Color.taqvoBackgroundDark)
+        .navigationTitle("Support")
+    }
+}
+
 struct FeedView: View {
     @EnvironmentObject var store: ActivityStore
 
@@ -328,7 +349,12 @@ struct ActivityRow: View {
                 Color.black.opacity(0.8)
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text(verb + " " + String(format: "%.2f km", activity.distanceMeters/1000.0))
+                let header: String = {
+                    let t = activity.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let t, !t.isEmpty { return t }
+                    return "\(verb) \(String(format: "%.2f km", activity.distanceMeters/1000.0))"
+                }()
+                Text(header)
                     .font(.headline)
                     .foregroundColor(.white)
                     .shadow(color: .black.opacity(0.6), radius: 2)
@@ -379,6 +405,12 @@ struct ActivityRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Headline uses custom title if available, otherwise verb + distance
+            if let t = activity.title?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
+                Text(t).font(.headline)
+            } else {
+                Text("\(verb) \(String(format: "%.2f km", activity.distanceMeters/1000.0))").font(.headline)
+            }
             if let data = activity.photoPNG, let img = UIImage(data: data) {
                 Image(uiImage: img)
                     .resizable()
@@ -501,6 +533,7 @@ struct CommunityView: View {
     @EnvironmentObject var community: CommunityViewModel
     @EnvironmentObject var appState: AppState
     @State private var showingCreateSheet = false
+    @State private var showingCreateClubSheet = false
     var body: some View {
         NavigationStack {
             List {
@@ -529,6 +562,65 @@ struct CommunityView: View {
                     }
                 }
 
+                // Leaderboard filters + list
+                Section("Leaderboard Filters") {
+                    Picker("Sort", selection: $community.leaderboardSort) {
+                        Text("Distance").tag(LeaderboardSort.distance)
+                        Text("Pace").tag(LeaderboardSort.pace)
+                        Text("Streak").tag(LeaderboardSort.streak)
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: community.leaderboardSort) { sort in
+                        community.setLeaderboardSort(sort)
+                    }
+                }
+                Section("Leaderboard") {
+                    ForEach(community.leaderboard) { entry in
+                        HStack {
+                            Text("#\(entry.rank)").foregroundColor(.taqvoAccentText)
+                            Text(entry.userName).foregroundColor(.taqvoTextDark)
+                            Spacer()
+                            VStack(alignment: .trailing) {
+                                Text(String(format: "%.1f km", entry.totalDistanceMeters/1000.0))
+                                    .foregroundColor(.taqvoTextDark)
+                                if let dur = entry.totalDurationSeconds {
+                                    let paceStr = ActivityTrackingViewModel.formattedPace(distanceMeters: entry.totalDistanceMeters, durationSeconds: dur)
+                                    Text(paceStr).font(.caption).foregroundColor(.taqvoAccentText)
+                                }
+                                if let streak = entry.currentStreakDays, streak > 0 {
+                                    Text("\(streak)d streak").font(.caption2).foregroundColor(.taqvoAccentText)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Clubs section
+                Section("Clubs") {
+                    if community.clubs.isEmpty {
+                        Text("No clubs yet").foregroundColor(.taqvoAccentText)
+                    } else {
+                        ForEach(community.clubs) { cl in
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(cl.name).font(.headline).foregroundColor(.taqvoTextDark)
+                                    Text(cl.description).font(.caption).foregroundColor(.taqvoAccentText)
+                                }
+                                Spacer()
+                                Button(community.clubs.first(where: { $0.id == cl.id })?.isJoined == true ? "Leave" : "Join") {
+                                    community.toggleClubJoin(clubID: cl.id)
+                                }
+                                .buttonStyle(TaqvoCTAButtonStyle())
+                            }
+                        }
+                    }
+                    Button {
+                        showingCreateClubSheet = true
+                    } label: {
+                        Label("Create Club", systemImage: "plus")
+                    }
+                }
+
                 Section("Challenges") {
                     ForEach(community.challenges) { ch in
                         NavigationLink(destination: ChallengeDetailView(challenge: ch)) {
@@ -550,6 +642,7 @@ struct CommunityView: View {
                                             appState.navigateToActivity = true
                                         }
                                     }
+                                    .buttonStyle(TaqvoCTAButtonStyle())
                                 }
                                 .buttonStyle(.bordered)
                                 .tint(.taqvoCTA)
@@ -598,6 +691,61 @@ struct CommunityView: View {
             CreateChallengeSheet()
                 .environmentObject(community)
                 .environmentObject(store)
+        }
+        .sheet(isPresented: $showingCreateClubSheet) {
+            CreateClubSheet()
+                .environmentObject(community)
+        }
+    }
+}
+
+struct CreateClubSheet: View {
+    @EnvironmentObject var community: CommunityViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name: String = ""
+    @State private var description: String = ""
+    @State private var isPublic: Bool = true
+    @State private var creating: Bool = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Details") {
+                    TextField("Name", text: $name)
+                    TextField("Description", text: $description, axis: .vertical)
+                }
+                Section("Visibility") {
+                    Toggle("Public", isOn: $isPublic)
+                }
+                if let msg = errorMessage {
+                    Section {
+                        Text(msg).foregroundColor(.red)
+                    }
+                }
+            }
+            .navigationTitle("Create Club")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(creating ? "Creating..." : "Create") {
+                        Task {
+                            creating = true
+                            do {
+                                try await community.createClub(name: name.trimmingCharacters(in: .whitespacesAndNewlines), description: description.trimmingCharacters(in: .whitespacesAndNewlines), isPublic: isPublic)
+                                await MainActor.run { dismiss() }
+                            } catch {
+                                errorMessage = (error as NSError).localizedDescription
+                            }
+                            creating = false
+                        }
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || creating)
+                }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
         }
     }
 }
@@ -919,6 +1067,162 @@ struct InsightsView: View {
         }
     }
 
+    // MARK: - Insights Helpers
+    private func daysWithActivitySet(using calendar: Calendar = Calendar(identifier: .iso8601)) -> Set<Date> {
+        Set(store.activities.map { calendar.startOfDay(for: $0.endDate) })
+    }
+
+    private func bestDaysStreak(using calendar: Calendar = Calendar(identifier: .iso8601)) -> Int {
+        let days = store.activities.map { calendar.startOfDay(for: $0.endDate) }.sorted()
+        guard !days.isEmpty else { return 0 }
+        var best = 1
+        var current = 1
+        for i in 1..<days.count {
+            if let prev = calendar.date(byAdding: .day, value: 1, to: days[i-1]), prev == days[i] {
+                current += 1
+                best = max(best, current)
+            } else if days[i] != days[i-1] { // reset on gap, but skip duplicates
+                current = 1
+            }
+        }
+        return best
+    }
+
+    @ViewBuilder
+    private func recentStreakRow() -> some View {
+        let cal = Calendar(identifier: .iso8601)
+        let today = cal.startOfDay(for: Date())
+        let set = daysWithActivitySet(using: cal)
+        HStack(spacing: 8) {
+            ForEach(0..<14) { i in
+                let day = cal.date(byAdding: .day, value: -i, to: today) ?? today
+                let active = set.contains(day)
+                Circle()
+                    .fill(active ? Color.taqvoCTA : Color.black.opacity(0.15))
+                    .frame(width: 12, height: 12)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func milestoneChip(title: String, achieved: Bool) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: achieved ? "checkmark.seal.fill" : "lock")
+                .foregroundColor(achieved ? .taqvoCTA : .taqvoAccentText)
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.taqvoTextDark)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.black.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private func milestonesView() -> some View {
+        let totalDistance = store.activities.reduce(0.0) { $0 + $1.distanceMeters }
+        let longestRun = store.activities.map { $0.distanceMeters }.max() ?? 0
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Milestones")
+                    .font(.caption)
+                    .foregroundColor(.taqvoAccentText)
+                Spacer()
+            }
+            // Distance milestones (single-activity)
+            HStack(spacing: 8) {
+                milestoneChip(title: "5K", achieved: longestRun >= 5_000)
+                milestoneChip(title: "10K", achieved: longestRun >= 10_000)
+                milestoneChip(title: "Half (21K)", achieved: longestRun >= 21_097)
+                milestoneChip(title: "Marathon (42K)", achieved: longestRun >= 42_195)
+            }
+            // Total distance milestones (all-time)
+            HStack(spacing: 8) {
+                milestoneChip(title: "100K total", achieved: totalDistance >= 100_000)
+                milestoneChip(title: "250K total", achieved: totalDistance >= 250_000)
+                milestoneChip(title: "500K total", achieved: totalDistance >= 500_000)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func weeklyComparisonView(weekly: [WeeklySummary]) -> some View {
+        let cal = Calendar(identifier: .iso8601)
+        if weekly.count < 2 {
+            HStack {
+                Text("Compare Weeks")
+                    .font(.caption)
+                    .foregroundColor(.taqvoAccentText)
+                Spacer()
+                Text("Not enough data")
+                    .font(.headline)
+                    .foregroundColor(.taqvoTextDark)
+            }
+        } else {
+            let cur = weekly[0]
+            let prev = weekly[1]
+            let distDelta = cur.totalDistanceMeters - prev.totalDistanceMeters
+            let distPct = prev.totalDistanceMeters > 0 ? (distDelta / prev.totalDistanceMeters) * 100.0 : 0
+            let durDelta = cur.totalDurationSeconds - prev.totalDurationSeconds
+            let paceCur = paceMinPerKm(distanceMeters: cur.totalDistanceMeters, durationSeconds: cur.totalDurationSeconds)
+            let pacePrev = paceMinPerKm(distanceMeters: prev.totalDistanceMeters, durationSeconds: prev.totalDurationSeconds)
+            let paceDelta = paceCur - pacePrev // negative is improvement
+            let weekComps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: cur.weekStart)
+            let runCountCur = store.activities.filter { cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: $0.endDate) == weekComps }.count
+            let prevComps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: prev.weekStart)
+            let runCountPrev = store.activities.filter { cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: $0.endDate) == prevComps }.count
+            let runDelta = runCountCur - runCountPrev
+
+            VStack(spacing: 8) {
+                HStack {
+                    Text("Compare Weeks")
+                        .font(.caption)
+                        .foregroundColor(.taqvoAccentText)
+                    Spacer()
+                }
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text("Distance")
+                            .font(.caption)
+                            .foregroundColor(.taqvoAccentText)
+                        Text(String(format: "%+.2f km (%+.0f%%)", distDelta/1000.0, distPct))
+                            .font(.headline)
+                            .foregroundColor(.taqvoTextDark)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing) {
+                        Text("Duration")
+                            .font(.caption)
+                            .foregroundColor(.taqvoAccentText)
+                        Text(String(format: "%+d min", Int(durDelta/60.0)))
+                            .font(.headline)
+                            .foregroundColor(.taqvoTextDark)
+                    }
+                }
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text("Pace")
+                            .font(.caption)
+                            .foregroundColor(.taqvoAccentText)
+                        Text(String(format: "%+.2f min/km", paceDelta))
+                            .font(.headline)
+                            .foregroundColor(paceDelta < 0 ? .green : .red)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing) {
+                        Text("Runs")
+                            .font(.caption)
+                            .foregroundColor(.taqvoAccentText)
+                        Text(String(format: "%+d", runDelta))
+                            .font(.headline)
+                            .foregroundColor(.taqvoTextDark)
+                    }
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private func summaryList(weekly: [WeeklySummary], daily: [DailySummary], monthly: [MonthlySummary]) -> some View {
         switch period {
@@ -975,6 +1279,17 @@ struct InsightsView: View {
                                     .font(.headline)
                                     .foregroundColor(.taqvoTextDark)
                             }
+                            // Visual streak tracker (last 14 days)
+                            recentStreakRow()
+                            HStack {
+                                Text("Best streak")
+                                    .font(.caption)
+                                    .foregroundColor(.taqvoAccentText)
+                                Spacer()
+                                Text("\(bestDaysStreak()) days")
+                                    .font(.subheadline)
+                                    .foregroundColor(.taqvoTextDark)
+                            }
 
                             Picker("Period", selection: $period) {
                                 Text("Daily").tag(Period.daily)
@@ -982,6 +1297,9 @@ struct InsightsView: View {
                                 Text("Monthly").tag(Period.monthly)
                             }
                             .pickerStyle(.segmented)
+
+                            // Compare progress with past weeks
+                            weeklyComparisonView(weekly: weekly)
 
                             // Distance chart
                             distanceChart(weekly: weekly, daily: daily, monthly: monthly)
@@ -994,6 +1312,9 @@ struct InsightsView: View {
 
                             // Intensity chart (kcal/min)
                             intensityChart(weekly: weekly, daily: daily, monthly: monthly)
+
+                            // Milestones grid (visuals)
+                            milestonesView()
 
                             // Cards list
                             summaryList(weekly: weekly, daily: daily, monthly: monthly)
@@ -1285,8 +1606,33 @@ struct ProfileView: View {
 
     @State private var showSpotifyPicker: Bool = false
 
+    // New stored profile settings
+    @AppStorage("profileBio") private var profileBio: String = ""
+    @AppStorage("profileUsername") private var profileUsername: String = ""
+    @AppStorage("profileImageBase64") private var profileImageBase64: String = ""
+    @AppStorage("postVisibility") private var postVisibilityRaw: String = PostVisibility.publicFeed.rawValue
+    @AppStorage("notifyGoalCompletion") private var notifyGoalCompletion: Bool = true
+    @AppStorage("notifyNewFollower") private var notifyNewFollower: Bool = true
+    @AppStorage("notifyComments") private var notifyComments: Bool = true
+    @AppStorage("notifyWeeklyStats") private var notifyWeeklyStats: Bool = true
+    @AppStorage("preferredLanguage") private var preferredLanguageCode: String = "en"
+
+    @State private var selectedPhotoItem: PhotosPickerItem? = nil
+    @State private var profileUIImage: UIImage? = nil
+
+    enum PostVisibility: String, CaseIterable {
+        case publicFeed = "public"
+        case friends = "friends"
+        case privateOnly = "private"
+    }
+
     private var provider: MusicProvider {
         MusicProvider(rawValue: providerString) ?? .spotify
+    }
+
+    private func decodeProfileImage() {
+        guard !profileImageBase64.isEmpty, let data = Data(base64Encoded: profileImageBase64) else { return }
+        profileUIImage = UIImage(data: data)
     }
 
     var body: some View {
@@ -1303,6 +1649,57 @@ struct ProfileView: View {
                     Text("Typography: Helvetica Neue per PRD")
                         .font(.caption)
                         .foregroundColor(.taqvoAccentText)
+                }
+                .listRowBackground(Color.black.opacity(0.08))
+
+                // Profile section: photo + bio editing
+                Section("Profile") {
+                    HStack(spacing: 16) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.black.opacity(0.12))
+                                .frame(width: 72, height: 72)
+                            if let img = profileUIImage {
+                                Image(uiImage: img)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 68, height: 68)
+                                    .clipShape(Circle())
+                            } else {
+                                Image(systemName: "person.crop.circle")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .foregroundColor(.taqvoAccentText)
+                                    .frame(width: 52, height: 52)
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            TextField("Add a username", text: $profileUsername)
+                                .textInputAutocapitalization(.never)
+                                .disableAutocorrection(true)
+                            TextField("Add a short bio", text: $profileBio)
+                                .textInputAutocapitalization(.sentences)
+                                .disableAutocorrection(false)
+                            PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                                Text("Edit Photo")
+                                    .foregroundColor(.taqvoTextLight)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(Color.taqvoCTA)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                        }
+                    }
+                    if supabaseAuth.isAuthenticated {
+                        Button("Sign out") {
+                            SupabaseAuthManager.shared.signOut()
+                        }
+                        .foregroundColor(.taqvoTextLight)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(Color.taqvoCTA.opacity(0.9))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
                 }
                 .listRowBackground(Color.black.opacity(0.08))
 
@@ -1364,23 +1761,60 @@ struct ProfileView: View {
                 }
                 .listRowBackground(Color.black.opacity(0.08))
 
-                Section("Account") {
-                    HStack {
-                        Text("Supabase")
-                            .foregroundColor(.taqvoTextDark)
-                        Spacer()
-                        Image(systemName: supabaseAuth.isAuthenticated ? "checkmark.circle.fill" : "exclamationmark.circle")
-                            .foregroundColor(supabaseAuth.isAuthenticated ? .taqvoCTA : .taqvoAccentText)
+                // Activity visibility
+                Section("Activity Visibility") {
+                    Picker("Post Visibility", selection: $postVisibilityRaw) {
+                        Text("Public").tag(PostVisibility.publicFeed.rawValue)
+                        Text("Friends").tag(PostVisibility.friends.rawValue)
+                        Text("Private").tag(PostVisibility.privateOnly.rawValue)
                     }
-                    Button(supabaseAuth.isAuthenticated ? "Signed in" : "Sign in with Apple") {
-                        SupabaseAuthManager.shared.signInWithApple()
+                    .pickerStyle(.segmented)
+                    Text("Controls default privacy for new feed posts.")
+                        .font(.caption)
+                        .foregroundColor(.taqvoAccentText)
+                }
+                .listRowBackground(Color.black.opacity(0.08))
+
+                // Notifications
+                Section("Notifications") {
+                    Toggle("Goal completion", isOn: $notifyGoalCompletion)
+                        .tint(.taqvoCTA)
+                        .foregroundColor(.taqvoTextDark)
+                    Toggle("New followers", isOn: $notifyNewFollower)
+                        .tint(.taqvoCTA)
+                        .foregroundColor(.taqvoTextDark)
+                    Toggle("Comments on my posts", isOn: $notifyComments)
+                        .tint(.taqvoCTA)
+                        .foregroundColor(.taqvoTextDark)
+                    Toggle("Weekly stats recap", isOn: $notifyWeeklyStats)
+                        .tint(.taqvoCTA)
+                        .foregroundColor(.taqvoTextDark)
+                }
+                .listRowBackground(Color.black.opacity(0.08))
+
+                // Language
+                Section("Language") {
+                    Picker("Preferred Language", selection: $preferredLanguageCode) {
+                        Text("English").tag("en")
+                        Text("Spanish").tag("es")
+                        Text("French").tag("fr")
+                        Text("German").tag("de")
+                        Text("Portuguese").tag("pt")
+                        Text("Japanese").tag("ja")
                     }
-                    .disabled(supabaseAuth.isAuthenticated)
-                    .foregroundColor(.taqvoTextLight)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(Color.taqvoCTA)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .pickerStyle(.menu)
+                    Text("Applies to UI labels (requires app restart).")
+                        .font(.caption)
+                        .foregroundColor(.taqvoAccentText)
+                }
+                .listRowBackground(Color.black.opacity(0.08))
+
+
+                // Support & Help
+                Section("Support & Help") {
+                    NavigationLink("Help & FAQ") { SupportView() }
+                    Link("Contact Support", destination: URL(string: "mailto:support@taqvo.app")!)
+                        .foregroundColor(.taqvoCTA)
                 }
                 .listRowBackground(Color.black.opacity(0.08))
 
@@ -1512,12 +1946,22 @@ struct ProfileView: View {
                 appState.motionAuthorized = PermissionsViewModel.motionAuthorized()
                 appState.healthAuthorized = PermissionsViewModel.healthAuthorized()
                 appState.backgroundTrackingEnabled = permissionsVM.alwaysAuthorizedState
+                decodeProfileImage()
             }
             .onReceive(permissionsVM.$locationAuthorizedState) { authorized in
                 appState.locationAuthorized = authorized
             }
             .onReceive(permissionsVM.$alwaysAuthorizedState) { authorizedAlways in
                 appState.backgroundTrackingEnabled = authorizedAlways
+            }
+            .onChange(of: selectedPhotoItem) { newItem in
+                guard let item = newItem else { return }
+                Task {
+                    if let data = try? await item.loadTransferable(type: Data.self) {
+                        profileUIImage = UIImage(data: data)
+                        profileImageBase64 = data.base64EncodedString()
+                    }
+                }
             }
             .sheet(isPresented: $showSpotifyPicker) {
                 SpotifyPlaylistPickerView(spotifyVM: spotifyVM)

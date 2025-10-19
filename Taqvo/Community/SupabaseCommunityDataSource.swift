@@ -67,11 +67,11 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
 
     func loadLeaderboard() async throws -> [LeaderboardEntry] {
         [
-            LeaderboardEntry(id: UUID(), rank: 1, userName: "Alex", totalDistanceMeters: 42000),
-            LeaderboardEntry(id: UUID(), rank: 2, userName: "Sam", totalDistanceMeters: 38000),
-            LeaderboardEntry(id: UUID(), rank: 3, userName: "Taylor", totalDistanceMeters: 35000),
-            LeaderboardEntry(id: UUID(), rank: 4, userName: "Jordan", totalDistanceMeters: 33000),
-            LeaderboardEntry(id: UUID(), rank: 5, userName: "Riley", totalDistanceMeters: 30000)
+            LeaderboardEntry(id: UUID(), rank: 1, userName: "Alex", totalDistanceMeters: 42000, totalDurationSeconds: 14000, currentStreakDays: 6),
+            LeaderboardEntry(id: UUID(), rank: 2, userName: "Sam", totalDistanceMeters: 38000, totalDurationSeconds: 13000, currentStreakDays: 8),
+            LeaderboardEntry(id: UUID(), rank: 3, userName: "Taylor", totalDistanceMeters: 35000, totalDurationSeconds: 12000, currentStreakDays: 3),
+            LeaderboardEntry(id: UUID(), rank: 4, userName: "Jordan", totalDistanceMeters: 33000, totalDurationSeconds: 11000, currentStreakDays: 2),
+            LeaderboardEntry(id: UUID(), rank: 5, userName: "Riley", totalDistanceMeters: 30000, totalDurationSeconds: 10000, currentStreakDays: 5)
         ]
     }
 
@@ -91,51 +91,19 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
             throw NSError(domain: "Supabase", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sign in required to create a challenge"])
         }
         let newId = UUID()
-
-        struct ReturnRow: Decodable {
-            let id: String
-            let title: String
-            let detail: String?
-            let start_date: String
-            let end_date: String
-            let goal_distance_meters: Double?
-            let is_public: Bool?
-        }
-
-        let df = DateFormatter()
-        df.calendar = Calendar(identifier: .iso8601)
-        df.locale = Locale(identifier: "en_US_POSIX")
-        df.dateFormat = "yyyy-MM-dd"
-
-        // Perform insert via REST
-        let body: [String: Any] = [
-            "id": newId.uuidString,
-            "title": title,
-            "detail": detail,
-            "start_date": df.string(from: startDate),
-            "end_date": df.string(from: endDate),
-            "goal_distance_meters": goalDistanceMeters,
-            "is_public": isPublic,
-            "owner_id": userId
-        ]
+        _ = userId
+        // Try server create
         do {
-            let data: [ReturnRow] = try await post(path: "/rest/v1/challenges?select=id,title,detail,start_date,end_date,goal_distance_meters,is_public", jsonBody: body)
-            if let r = data.first,
-               let id = UUID(uuidString: r.id),
-               let start = df.date(from: r.start_date),
-               let end = df.date(from: r.end_date) {
-                return Challenge(
-                    id: id,
-                    title: r.title,
-                    detail: r.detail ?? "",
-                    startDate: start,
-                    endDate: end,
-                    goalDistanceMeters: (r.goal_distance_meters ?? goalDistanceMeters),
-                    isJoined: false,
-                    progressMeters: 0,
-                    isPublic: r.is_public ?? isPublic
-                )
-            }
+            struct Row: Decodable { let id: String? }
+            let _: Row = try await post(path: "/rest/v1/challenges", jsonBody: [
+                "id": newId.uuidString,
+                "title": title,
+                "detail": detail,
+                "start_date": ISO8601DateFormatter().string(from: startDate),
+                "end_date": ISO8601DateFormatter().string(from: endDate),
+                "goal_distance_meters": goalDistanceMeters,
+                "is_public": isPublic
+            ])
         } catch {
             // Offline or unconfigured Supabase: return a local challenge instance
             return Challenge(
@@ -170,6 +138,31 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
 
     func canDeleteChallenge(challengeID: UUID) async -> Bool {
         true
+    }
+
+    // MARK: - Clubs / Groups
+    func loadClubs() async throws -> [Club] {
+        // Stub: offline or no server
+        [
+            Club(id: UUID(), name: "Downtown Runners", description: "Local running group.", isPublic: true, isJoined: false, memberCount: 124),
+            Club(id: UUID(), name: "Trail Blazers", description: "Trail and ultra crew.", isPublic: true, isJoined: true, memberCount: 58)
+        ]
+    }
+
+    func createClub(name: String, description: String, isPublic: Bool) async throws -> Club {
+        guard let _ = await authManager.userId else {
+            throw NSError(domain: "Supabase", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sign in required to create a club"])
+        }
+        return Club(id: UUID(), name: name, description: description, isPublic: isPublic, isJoined: true, memberCount: 1)
+    }
+
+    func setClubMembership(clubID: UUID, isJoined: Bool) async throws {
+        _ = (clubID, isJoined)
+    }
+
+    // MARK: - Invites
+    func inviteToChallenge(challengeID: UUID, usernames: [String]) async throws {
+        _ = (challengeID, usernames)
     }
 
     // MARK: - HTTP helpers (stubs)

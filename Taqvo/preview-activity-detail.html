@@ -21,7 +21,7 @@
   <div class="wrap">
     <div class="map">MapRouteView preview</div>
     <div class="card" style="margin-top:16px;">
-      <h1>Activity Detail</h1>
+      <h1 id="title">Activity Detail</h1>
       <div class="grid">
         <div class="metric"><div class="label">Distance</div><div class="value" id="distance">--</div></div>
         <div class="metric"><div class="label">Duration</div><div class="value" id="duration">--</div></div>
@@ -36,6 +36,12 @@
     </div>
   </div>
   <script>
+    const params = new URLSearchParams(window.location.search);
+    const title = params.get('title');
+    if (title && title.trim().length > 0) {
+      document.getElementById('title').innerText = title.trim();
+    }
+  </script>
     const q = new URLSearchParams(location.search);
     const fmtDuration = (sec) => {
       const s = Math.max(0, Math.floor(sec));
