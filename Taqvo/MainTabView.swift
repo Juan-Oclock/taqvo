@@ -13,6 +13,7 @@ import PhotosUI
 struct MainTabView: View {
     @EnvironmentObject var appState: AppState
     @State private var selectedTab: Tab = .activity
+    @StateObject private var profileService = ProfileService.shared
 
     enum Tab: Hashable {
         case feed, community, activity, insights, profile
@@ -60,6 +61,12 @@ struct MainTabView: View {
                 appState.navigateToActivity = false
             }
         }
+        .onAppear {
+            // Load profile data globally when the main app starts
+            Task {
+                await profileService.loadCurrentUserProfile()
+            }
+        }
         .tint(.taqvoCTA)
         .background(Color.taqvoBackgroundDark)
     }
@@ -70,6 +77,8 @@ struct ActivityView: View {
     @State private var activityType: ActivityType = .run
     @State private var goal: Goal = .none
     @State private var navigateToLive: Bool = false
+    @State private var showCountdown: Bool = false
+    @State private var countdownValue: Int = 3
     @StateObject private var trackingVM = ActivityTrackingViewModel()
 
     @AppStorage("goalType") private var storedGoalType: String = Goal.none.rawValue
@@ -81,7 +90,6 @@ struct ActivityView: View {
 
     @State private var timeMinutes: Int = 30
     @State private var distanceKilometers: Double = 5.0
-    // Add music integration state for Activity tab
     @StateObject private var musicVM = MusicViewModel()
     @StateObject private var spotifyVM = SpotifyViewModel()
     @State private var showPlaylistPicker: Bool = false
@@ -89,169 +97,320 @@ struct ActivityView: View {
 
     enum ActivityType: String, CaseIterable { case walk, jog, run, ride }
     enum Goal: String, CaseIterable { case none, time, distance }
+    
+    // MARK: - Modern UI Views
+    
+    private var modernActivitySetup: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                // Header
+                VStack(spacing: 12) {
+                    Text("Ready to Move?")
+                        .font(.system(size: 32, weight: .bold))
+                        .foregroundColor(.taqvoTextDark)
+                    
+                    Text("Set up your activity")
+                        .font(.system(size: 16))
+                        .foregroundColor(.taqvoAccentText)
+                }
+                .padding(.top, 40)
+                
+                // Activity Type Cards
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Activity Type")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.taqvoAccentText)
+                        .padding(.horizontal, 16)
+                    
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                        activityTypeCard(type: .walk, icon: "figure.walk", color: .blue)
+                        activityTypeCard(type: .jog, icon: "figure.run", color: .orange)
+                        activityTypeCard(type: .run, icon: "figure.run", color: .red)
+                        activityTypeCard(type: .ride, icon: "bicycle", color: .purple)
+                    }
+                    .padding(.horizontal, 16)
+                }
+                
+                // Goal Selection
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Goal")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.taqvoAccentText)
+                        .padding(.horizontal, 16)
+                    
+                    VStack(spacing: 12) {
+                        goalCard(type: .none, icon: "infinity", title: "Free Run")
+                        goalCard(type: .distance, icon: "location.fill", title: "Distance Goal")
+                        goalCard(type: .time, icon: "clock.fill", title: "Time Goal")
+                    }
+                    .padding(.horizontal, 16)
+                }
+                
+                // Goal Details
+                if goal == .distance {
+                    distanceGoalDetail
+                } else if goal == .time {
+                    timeGoalDetail
+                }
+                
+                // Start Button
+                Button {
+                    prepareAndStartCountdown()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 20))
+                        Text("Start Activity")
+                            .font(.system(size: 18, weight: .bold))
+                    }
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 60)
+                    .background(Color.taqvoCTA)
+                    .cornerRadius(30)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 20)
+                .padding(.bottom, 40)
+            }
+        }
+    }
+    
+    private func activityTypeCard(type: ActivityType, icon: String, color: Color) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.3)) {
+                activityType = type
+            }
+        } label: {
+            VStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 32))
+                    .foregroundColor(activityType == type ? color : .gray)
+                
+                Text(type.rawValue.capitalized)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(activityType == type ? .taqvoTextDark : .taqvoAccentText)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 100)
+            .background(activityType == type ? color.opacity(0.15) : Color.black.opacity(0.2))
+            .cornerRadius(16)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(activityType == type ? color : Color.clear, lineWidth: 2)
+            )
+        }
+    }
+    
+    private func goalCard(type: Goal, icon: String, title: String) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.3)) {
+                goal = type
+            }
+        } label: {
+            HStack(spacing: 16) {
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundColor(goal == type ? .taqvoCTA : .gray)
+                    .frame(width: 40)
+                
+                Text(title)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(goal == type ? .taqvoTextDark : .taqvoAccentText)
+                
+                Spacer()
+                
+                if goal == type {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.taqvoCTA)
+                        .font(.system(size: 20))
+                }
+            }
+            .padding(16)
+            .background(goal == type ? Color.taqvoCTA.opacity(0.1) : Color.black.opacity(0.2))
+            .cornerRadius(16)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(goal == type ? Color.taqvoCTA : Color.clear, lineWidth: 2)
+            )
+        }
+    }
+    
+    private var distanceGoalDetail: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Target Distance")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.taqvoAccentText)
+                Spacer()
+                Text(String(format: "%.1f km", distanceKilometers))
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.taqvoCTA)
+            }
+            
+            Slider(value: $distanceKilometers, in: 1...42.2, step: 0.5)
+                .tint(.taqvoCTA)
+            
+            HStack {
+                Text("1 km")
+                    .font(.system(size: 12))
+                    .foregroundColor(.taqvoAccentText)
+                Spacer()
+                Text("42.2 km")
+                    .font(.system(size: 12))
+                    .foregroundColor(.taqvoAccentText)
+            }
+        }
+        .padding(16)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(16)
+        .padding(.horizontal, 16)
+    }
+    
+    private var timeGoalDetail: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Target Time")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.taqvoAccentText)
+                Spacer()
+                Text("\(timeMinutes) min")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.taqvoCTA)
+            }
+            
+            Slider(value: Binding(get: { Double(timeMinutes) }, set: { timeMinutes = Int($0) }), in: 10...180, step: 5)
+                .tint(.taqvoCTA)
+            
+            HStack {
+                Text("10 min")
+                    .font(.system(size: 12))
+                    .foregroundColor(.taqvoAccentText)
+                Spacer()
+                Text("180 min")
+                    .font(.system(size: 12))
+                    .foregroundColor(.taqvoAccentText)
+            }
+        }
+        .padding(16)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(16)
+        .padding(.horizontal, 16)
+    }
+    
+    private var countdownView: some View {
+        ZStack {
+            Color.taqvoBackgroundDark.ignoresSafeArea()
+            
+            VStack(spacing: 40) {
+                Text("Get Ready!")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(.taqvoTextDark)
+                
+                ZStack {
+                    Circle()
+                        .stroke(Color.gray.opacity(0.2), lineWidth: 8)
+                        .frame(width: 200, height: 200)
+                    
+                    Circle()
+                        .trim(from: 0, to: CGFloat(4 - countdownValue) / 3)
+                        .stroke(Color.taqvoCTA, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                        .frame(width: 200, height: 200)
+                        .rotationEffect(.degrees(-90))
+                        .animation(.linear(duration: 1), value: countdownValue)
+                    
+                    Text("\(countdownValue)")
+                        .font(.system(size: 80, weight: .bold))
+                        .foregroundColor(.taqvoCTA)
+                }
+                
+                Text(activityType.rawValue.capitalized)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(.taqvoAccentText)
+                
+                Button {
+                    cancelCountdown()
+                } label: {
+                    Text("Cancel")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 12)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(20)
+                }
+            }
+        }
+        .onAppear {
+            startCountdown()
+        }
+    }
+    
+    // MARK: - Helper Functions
+    
+    private func prepareAndStartCountdown() {
+        // Map selected type into tracking kind
+        switch activityType {
+        case .walk: trackingVM.setActivityKind(.walk)
+        case .jog: trackingVM.setActivityKind(.jog)
+        case .run: trackingVM.setActivityKind(.run)
+        case .ride: trackingVM.setActivityKind(.ride)
+        }
+        
+        switch goal {
+        case .none:
+            trackingVM.setTimeGoal(nil)
+            trackingVM.setDistanceGoal(nil)
+        case .time:
+            trackingVM.setTimeGoal(Double(timeMinutes * 60))
+            trackingVM.setDistanceGoal(nil)
+        case .distance:
+            trackingVM.setDistanceGoal(distanceKilometers * 1000.0)
+            trackingVM.setTimeGoal(nil)
+        }
+        trackingVM.autoEndOnGoal = storedAutoEndOnGoal
+        
+        withAnimation {
+            showCountdown = true
+            countdownValue = 3
+        }
+    }
+    
+    private func startCountdown() {
+        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
+            if countdownValue > 1 {
+                withAnimation {
+                    countdownValue -= 1
+                }
+            } else {
+                timer.invalidate()
+                showCountdown = false
+                navigateToLive = true
+            }
+        }
+    }
+    
+    private func cancelCountdown() {
+        withAnimation {
+            showCountdown = false
+            countdownValue = 3
+        }
+    }
 
     var body: some View {
         NavigationStack {
-            GeometryReader { geometry in
-                VStack(spacing: 0) {
-                    // Header
-                    VStack(spacing: 24) {
-                        Text("Activity")
-                            .font(.system(size: 28, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        
-                        Text("Pre-Run Setup")
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundColor(.white.opacity(0.8))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .padding(.horizontal, 32)
-                    .padding(.top, 20)
-                    
-                    Spacer()
-                    
-                    // Main content
-                    VStack(spacing: 32) {
-                        // Activity type selection
-                        VStack(spacing: 16) {
-                            Picker("Type", selection: $activityType) {
-                                ForEach(ActivityType.allCases, id: \.self) { t in
-                                    Text(t.rawValue.capitalized)
-                                        .foregroundColor(.white)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            .background(Color.white.opacity(0.1))
-                            .cornerRadius(12)
-                        }
-
-                        // Music section
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Music")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.white.opacity(0.7))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            
-                            VStack(spacing: 12) {
-                                HStack(spacing: 16) {
-                                    Image(systemName: "music.note.list")
-                                        .foregroundColor(.taqvoCTA)
-                                        .font(.system(size: 18))
-                                    Text("Apple Music")
-                                        .foregroundColor(.white)
-                                        .font(.system(size: 16, weight: .medium))
-                                    Spacer()
-                                    if musicVM.isAuthorized {
-                                        Button("Choose") { showPlaylistPicker = true }
-                                            .font(.system(size: 14, weight: .medium))
-                                            .foregroundColor(.taqvoCTA)
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                                
-                                HStack(spacing: 16) {
-                                    Image(systemName: "music.note")
-                                        .foregroundColor(.taqvoCTA)
-                                        .font(.system(size: 18))
-                                    Text("Spotify")
-                                        .foregroundColor(.white)
-                                        .font(.system(size: 16, weight: .medium))
-                                    Spacer()
-                                    if spotifyVM.isAuthorized {
-                                        Button("Choose") { showSpotifyPicker = true }
-                                            .font(.system(size: 14, weight: .medium))
-                                            .foregroundColor(.taqvoCTA)
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                            }
-                        }
-
-                        // Goal selection
-                        VStack(spacing: 16) {
-                            Picker("Goal", selection: $goal) {
-                                ForEach(Goal.allCases, id: \.self) { g in
-                                    Text(g.rawValue.capitalized)
-                                        .foregroundColor(.white)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            .background(Color.white.opacity(0.1))
-                            .cornerRadius(12)
-                            
-                            // Goal details
-                            if goal == .distance {
-                                VStack(spacing: 12) {
-                                    HStack {
-                                        Text("Distance")
-                                            .foregroundColor(.white.opacity(0.7))
-                                        Spacer()
-                                        Text(String(format: "%.1f km", distanceKilometers))
-                                            .foregroundColor(.white)
-                                            .font(.system(size: 16, weight: .medium))
-                                    }
-                                    Slider(value: $distanceKilometers, in: 1...42.2, step: 0.5)
-                                        .tint(.taqvoCTA)
-                                }
-                            } else if goal == .time {
-                                VStack(spacing: 12) {
-                                    HStack {
-                                        Text("Time")
-                                            .foregroundColor(.white.opacity(0.7))
-                                        Spacer()
-                                        Text("\(Int(timeMinutes)) min")
-                                            .foregroundColor(.white)
-                                            .font(.system(size: 16, weight: .medium))
-                                    }
-                                    Slider(value: Binding(get: { Double(timeMinutes) }, set: { timeMinutes = Int($0) }), in: 10...180, step: 5)
-                                        .tint(.taqvoCTA)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 32)
-                    
-                    Spacer()
-                    
-                    // Start button
-                    Button {
-                        // Map selected type into tracking kind
-                        switch activityType {
-                        case .walk: trackingVM.setActivityKind(.walk)
-                        case .jog: trackingVM.setActivityKind(.jog)
-                        case .run: trackingVM.setActivityKind(.run)
-                        case .ride: trackingVM.setActivityKind(.ride)
-                        }
-
-                        switch goal {
-                        case .none:
-                            trackingVM.setTimeGoal(nil)
-                            trackingVM.setDistanceGoal(nil)
-                        case .time:
-                            trackingVM.setTimeGoal(Double(timeMinutes * 60))
-                            trackingVM.setDistanceGoal(nil)
-                        case .distance:
-                            trackingVM.setDistanceGoal(distanceKilometers * 1000.0)
-                            trackingVM.setTimeGoal(nil)
-                        }
-                        trackingVM.autoEndOnGoal = storedAutoEndOnGoal
-                        navigateToLive = true
-                    } label: {
-                        Text("Start")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .background(Color.taqvoCTA)
-                            .cornerRadius(28)
-                    }
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 40)
+            ZStack {
+                Color.taqvoBackgroundDark.ignoresSafeArea()
+                
+                if showCountdown {
+                    countdownView
+                } else {
+                    modernActivitySetup
                 }
             }
-            .background(Color.taqvoOnboardingBG.ignoresSafeArea(.all))
             .navigationBarHidden(true)
+
+
             .onAppear {
                 // Hydrate baseline from storage
                 goal = Goal(rawValue: storedGoalType) ?? .none
@@ -335,60 +494,301 @@ struct FeedView: View {
     @EnvironmentObject var store: ActivityStore
     @State private var selectedActivity: FeedActivity?
     
-    private var visibleActivities: [FeedActivity] {
+    private var sortedActivities: [FeedActivity] {
         let currentUserId = SupabaseAuthManager.shared.userId ?? ""
-        return store.activities.filter { activity in
-            // Show user's own activities regardless of privacy setting
-            if activity.userId == currentUserId {
-                return true
+        return store.activities
+            .filter { activity in
+                if activity.userId == currentUserId { return true }
+                return activity.visibility == .publicFeed
             }
-            
-            // Show only public activities from other users
-            return activity.visibility == .publicFeed
-        }
+            .sorted { $0.endDate > $1.endDate }
     }
 
     var body: some View {
         NavigationStack {
-            Group {
-                if visibleActivities.isEmpty {
-                    VStack(spacing: 12) {
-                        Text("No activities yet")
-                            .font(.title3)
-                            .foregroundColor(.taqvoTextDark)
-                        Text("Finish a run and Share to Feed from the summary.")
-                            .font(.caption)
-                            .foregroundColor(.taqvoAccentText)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ZStack {
+                Color.taqvoBackgroundDark.ignoresSafeArea()
+                
+                if sortedActivities.isEmpty {
+                    emptyStateView
                 } else {
-                    List {
-                        ForEach(visibleActivities) { a in
-                            ActivityRow(activity: a, onTapActivity: {
-                                selectedActivity = a
-                            })
-                            .listRowBackground(Color.black.opacity(0.08))
+                    ScrollView {
+                        LazyVStack(spacing: 16) {
+                            ForEach(sortedActivities) { activity in
+                                ActivityCard(activity: activity, onTap: {
+                                    selectedActivity = activity
+                                })
+                                .environmentObject(store)
+                            }
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 16)
                     }
-                    .listStyle(.plain)
+                    .refreshable {
+                        await refreshFeed()
+                    }
                 }
             }
-            .background(Color.taqvoBackgroundDark)
-            .navigationTitle("Feed")
+            .navigationTitle("FEED")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    HStack(spacing: 16) {
+                        Button(action: {}) {
+                            Image(systemName: "person.circle")
+                                .font(.system(size: 24))
+                                .foregroundColor(.taqvoTextDark)
+                        }
+                        Button(action: {}) {
+                            Image(systemName: "square.and.pencil")
+                                .font(.system(size: 24))
+                                .foregroundColor(.taqvoTextDark)
+                        }
+                        Button(action: {}) {
+                            ZStack(alignment: .topTrailing) {
+                                Image(systemName: "bell")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(.taqvoTextDark)
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 8, height: 8)
+                                    .offset(x: 4, y: -4)
+                            }
+                        }
+                    }
+                }
+            }
             .navigationDestination(item: $selectedActivity) { activity in
                 ActivityDetailView(activity: activity)
             }
         }
     }
+    
+    private var emptyStateView: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "figure.run.circle.fill")
+                .font(.system(size: 80))
+                .foregroundColor(.taqvoCTA.opacity(0.6))
+            
+            Text("No Activities Yet")
+                .font(.taqvo(.title))
+                .foregroundColor(.taqvoTextDark)
+            
+            Text("Start your first run and share it\nto see it appear here!")
+                .font(.taqvo(.body))
+                .foregroundColor(.taqvoAccentText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    private func refreshFeed() async {
+        try? await Task.sleep(nanoseconds: 500_000_000)
+    }
 }
 
+struct FilterPill: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.taqvo(.body))
+                .foregroundColor(isSelected ? .taqvoTextLight : .taqvoTextDark)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(isSelected ? Color.taqvoCTA : Color.black.opacity(0.2))
+                .cornerRadius(20)
+        }
+    }
+}
+
+struct ActivityCard: View {
+    let activity: FeedActivity
+    let onTap: () -> Void
+    @EnvironmentObject var store: ActivityStore
+    @State private var showCommentsBottomSheet = false
+    
+    private var activityType: String {
+        switch activity.kind {
+        case .walk: return "WALKING"
+        case .jog: return "JOGGING"
+        case .run: return "RUNNING"
+        case .ride: return "CYCLING"
+        }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // User Header
+            HStack(spacing: 12) {
+                Circle()
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: 50, height: 50)
+                    .overlay(
+                        Image(systemName: "person.fill")
+                            .foregroundColor(.gray)
+                            .font(.system(size: 22))
+                    )
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(activity.userId == (SupabaseAuthManager.shared.userId ?? "") ? "You" : "User")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.taqvoTextDark)
+                    
+                    Text(activity.endDate.formatted(date: .abbreviated, time: .omitted))
+                        .font(.system(size: 14))
+                        .foregroundColor(.taqvoAccentText)
+                }
+                
+                Spacer()
+            }
+            .padding(20)
+            .contentShape(Rectangle())
+            .onTapGesture { onTap() }
+            
+            // Activity Type
+            Text(activityType)
+                .font(.system(size: 28, weight: .medium))
+                .italic()
+                .foregroundColor(.taqvoTextDark)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+                .onTapGesture { onTap() }
+            
+            // Note if available
+            if let note = activity.note, !note.isEmpty {
+                Text(note)
+                    .font(.system(size: 15))
+                    .foregroundColor(.taqvoAccentText)
+                    .lineLimit(2)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 12)
+                    .onTapGesture { onTap() }
+            }
+            
+            // Stats
+            HStack(spacing: 0) {
+                StatColumn(value: String(format: "%.2f", activity.distanceMeters / 1000), 
+                          unit: "km", 
+                          label: "Distance")
+                
+                StatColumn(value: ActivityTrackingViewModel.formattedDuration(activity.durationSeconds), 
+                          unit: "", 
+                          label: "Duration")
+                
+                StatColumn(value: ActivityTrackingViewModel.formattedPace(
+                              distanceMeters: activity.distanceMeters,
+                              durationSeconds: activity.durationSeconds),
+                          unit: "min/km",
+                          label: "Avg. Pace")
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 20)
+            .onTapGesture { onTap() }
+            
+            // Map/Image
+            Group {
+                if let data = activity.photoPNG, let img = UIImage(data: data) {
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 280)
+                        .clipped()
+                } else if let data = activity.snapshotPNG, let img = UIImage(data: data) {
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 280)
+                        .clipped()
+                } else {
+                    MapRouteView(route: ActivityStore.clCoordinates(from: activity.route))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 280)
+                }
+            }
+            .onTapGesture { onTap() }
+            
+            // Actions
+            HStack(spacing: 32) {
+                Button {
+                    store.toggleLike(activityID: activity.id)
+                } label: {
+                    Image(systemName: activity.isLiked ? "heart.fill" : "heart")
+                        .font(.system(size: 24))
+                        .foregroundColor(activity.isLiked ? .red : .taqvoTextDark)
+                }
+                
+                Button {
+                    showCommentsBottomSheet = true
+                } label: {
+                    Image(systemName: "bubble.right")
+                        .font(.system(size: 24))
+                        .foregroundColor(.taqvoTextDark)
+                }
+                
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            
+            // Engagement text
+            if activity.likeCount == 0 {
+                Text("BE THE FIRST TO LIKE THIS!")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.taqvoTextDark)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 20)
+            }
+        }
+        .background(Color.black.opacity(0.2))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .sheet(isPresented: $showCommentsBottomSheet) {
+            CommentsBottomSheet(isPresented: $showCommentsBottomSheet, activity: activity)
+                .environmentObject(store)
+        }
+    }
+}
+
+struct StatColumn: View {
+    let value: String
+    let unit: String
+    let label: String
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.system(size: 24, weight: .bold))
+                .foregroundColor(.taqvoTextDark)
+            
+            if !unit.isEmpty {
+                Text(unit)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.taqvoAccentText)
+            } else {
+                Text(" ")
+                    .font(.system(size: 11))
+            }
+            
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundColor(.taqvoAccentText)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+// Keep old ActivityRow for backward compatibility if needed elsewhere
 struct ActivityRow: View {
     let activity: FeedActivity
     let onTapActivity: (() -> Void)?
     @EnvironmentObject var store: ActivityStore
-    @State private var showComments: Bool = false
-    @State private var commentText: String = ""
+    @State private var showCommentsBottomSheet: Bool = false
 
     private var paceString: String {
         ActivityTrackingViewModel.formattedPace(distanceMeters: activity.distanceMeters,
@@ -402,10 +802,6 @@ struct ActivityRow: View {
         case .run: return "Ran"
         case .ride: return "Rode"
         }
-    }
-    
-    private var comments: [ActivityComment] {
-        activity.comments.sorted { $0.date < $1.date }
     }
 
     private func compositeShareImageURL() -> URL {
@@ -586,7 +982,7 @@ struct ActivityRow: View {
                 .foregroundColor(activity.isLiked ? .taqvoCTA : .taqvoTextDark)
 
                 Button {
-                    showComments.toggle()
+                    showCommentsBottomSheet = true
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "bubble.right")
@@ -601,71 +997,12 @@ struct ActivityRow: View {
                 }
                 .tint(.taqvoCTA)
             }
-            
-            // Inline comments section
-            if showComments {
-                VStack(alignment: .leading, spacing: 8) {
-                    Divider()
-                        .background(Color.taqvoAccentText.opacity(0.3))
-                    
-                    // Existing comments
-                    if comments.isEmpty {
-                        HStack {
-                            Image(systemName: "bubble.right")
-                                .foregroundColor(.taqvoAccentText)
-                                .font(.caption)
-                            Text("No comments yet")
-                                .foregroundColor(.taqvoAccentText)
-                                .font(.caption)
-                        }
-                        .padding(.vertical, 4)
-                    } else {
-                        ForEach(comments) { comment in
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text(comment.author)
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.taqvoTextDark)
-                                    Spacer()
-                                    Text(comment.date.formatted(date: .abbreviated, time: .shortened))
-                                        .font(.caption2)
-                                        .foregroundColor(.taqvoAccentText)
-                                }
-                                Text(comment.text)
-                                    .font(.caption)
-                                    .foregroundColor(.taqvoTextDark)
-                            }
-                            .padding(.vertical, 2)
-                        }
-                    }
-                    
-                    // Comment composer
-                    HStack(spacing: 8) {
-                        TextField("Add a comment…", text: $commentText)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.caption)
-                        Button("Send") {
-                            let trimmed = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !trimmed.isEmpty else { return }
-                            commentText = ""
-                            store.addComment(activityID: activity.id, text: trimmed)
-                        }
-                        .disabled(commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray : Color.taqvoCTA)
-                        .cornerRadius(8)
-                    }
-                    .padding(.top, 4)
-                }
-                .padding(.top, 8)
-            }
         }
         .padding(.vertical, 8)
+        .sheet(isPresented: $showCommentsBottomSheet) {
+            CommentsBottomSheet(isPresented: $showCommentsBottomSheet, activity: activity)
+                .environmentObject(store)
+        }
     }
 }
 
@@ -675,157 +1012,364 @@ struct CommunityView: View {
     @EnvironmentObject var appState: AppState
     @State private var showingCreateSheet = false
     @State private var showingCreateClubSheet = false
-    var body: some View {
-        NavigationStack {
-            List {
-                // Empty state when there are no public challenges
-                if community.challenges.isEmpty {
-                    Section {
-                        VStack(spacing: 12) {
-                            Image(systemName: "figure.run.circle")
-                                .font(.system(size: 48))
-                                .foregroundColor(.taqvoCTA)
-                            Text("No public challenges yet")
-                                .font(.headline)
-                                .foregroundColor(.taqvoTextDark)
-                            Text("If you just set up Supabase, add a public challenge or seed data. Tap Reload to try again.")
-                                .font(.caption)
-                                .multilineTextAlignment(.center)
-                                .foregroundColor(.taqvoAccentText)
-                                .padding(.horizontal)
-                            Button {
-                                community.load()
-                                community.refreshProgress(from: store)
-                            } label: {
-                                Label("Reload", systemImage: "arrow.clockwise")
-                            }
-                        }
-                    }
+    @State private var selectedTab: CommunityTab = .challenges
+    
+    enum CommunityTab: String, CaseIterable {
+        case challenges = "Challenges"
+        case leaderboard = "Leaderboard"
+        case clubs = "Clubs"
+    }
+    
+    // MARK: - Modern UI Views
+    
+    private var emptyStateView: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "figure.2.and.child.holdinghands")
+                .font(.system(size: 80))
+                .foregroundColor(.taqvoCTA.opacity(0.6))
+            
+            Text("No Challenges Yet")
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundColor(.taqvoTextDark)
+            
+            Text("Create or join a challenge to compete\nwith the community!")
+                .font(.system(size: 15))
+                .foregroundColor(.taqvoAccentText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+            
+            Button {
+                community.load()
+                community.refreshProgress(from: store)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.clockwise")
+                    Text("Reload")
                 }
-
-                // Leaderboard filters + list
-                Section("Leaderboard Filters") {
-                    Picker("Sort", selection: $community.leaderboardSort) {
-                        Text("Distance").tag(LeaderboardSort.distance)
-                        Text("Pace").tag(LeaderboardSort.pace)
-                        Text("Streak").tag(LeaderboardSort.streak)
-                    }
-                    .pickerStyle(.segmented)
-                    .onChange(of: community.leaderboardSort) { sort in
-                        community.setLeaderboardSort(sort)
-                    }
-                }
-                Section("Leaderboard") {
-                    ForEach(community.leaderboard) { entry in
-                        HStack {
-                            Text("#\(entry.rank)").foregroundColor(.taqvoAccentText)
-                            Text(entry.userName).foregroundColor(.taqvoTextDark)
-                            Spacer()
-                            VStack(alignment: .trailing) {
-                                Text(String(format: "%.1f km", entry.totalDistanceMeters/1000.0))
-                                    .foregroundColor(.taqvoTextDark)
-                                if let dur = entry.totalDurationSeconds {
-                                    let paceStr = ActivityTrackingViewModel.formattedPace(distanceMeters: entry.totalDistanceMeters, durationSeconds: dur)
-                                    Text(paceStr).font(.caption).foregroundColor(.taqvoAccentText)
-                                }
-                                if let streak = entry.currentStreakDays, streak > 0 {
-                                    Text("\(streak)d streak").font(.caption2).foregroundColor(.taqvoAccentText)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Clubs section
-                Section("Clubs") {
-                    if community.clubs.isEmpty {
-                        Text("No clubs yet").foregroundColor(.taqvoAccentText)
-                    } else {
-                        ForEach(community.clubs) { cl in
-                            HStack {
-                                VStack(alignment: .leading) {
-                                    Text(cl.name).font(.headline).foregroundColor(.taqvoTextDark)
-                                    Text(cl.description).font(.caption).foregroundColor(.taqvoAccentText)
-                                }
-                                Spacer()
-                                Button(community.clubs.first(where: { $0.id == cl.id })?.isJoined == true ? "Leave" : "Join") {
-                                    community.toggleClubJoin(clubID: cl.id)
-                                }
-                                .buttonStyle(TaqvoCTAButtonStyle())
-                            }
-                        }
-                    }
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.taqvoCTA)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+                .background(Color.taqvoCTA.opacity(0.1))
+                .cornerRadius(20)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    private var modernCommunityView: some View {
+        VStack(spacing: 0) {
+            // Tab Selector
+            HStack(spacing: 0) {
+                ForEach(CommunityTab.allCases, id: \.self) { tab in
                     Button {
-                        showingCreateClubSheet = true
-                    } label: {
-                        Label("Create Club", systemImage: "plus")
-                    }
-                }
-
-                Section("Challenges") {
-                    ForEach(community.challenges) { ch in
-                        NavigationLink(destination: ChallengeDetailView(challenge: ch)) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text(ch.title)
-                                        .font(.headline)
-                                        .foregroundColor(.taqvoTextDark)
-                                    Spacer()
-                                    Button(community.challenges.first(where: { $0.id == ch.id })?.isJoined == true ? "Leave" : "Join") {
-                                        community.toggleJoin(challengeID: ch.id)
-                                        community.refreshProgress(from: store)
-                                        if community.challenges.first(where: { $0.id == ch.id })?.isJoined == true {
-                                            appState.activityIntent = .run
-                                            appState.goalIntentType = .distance
-                                            appState.goalIntentMeters = 5000
-                                            appState.linkedChallengeTitle = ch.title
-                                            appState.linkedChallengeIsPublic = ch.isPublic
-                                            appState.navigateToActivity = true
-                                        }
-                                    }
-                                    .buttonStyle(TaqvoCTAButtonStyle())
-                                }
-                                .buttonStyle(.bordered)
-                                .tint(.taqvoCTA)
-                                Text(ch.detail)
-                                    .font(.caption)
-                                    .foregroundColor(.taqvoAccentText)
-                                HStack {
-                                    Text(String(format: "Goal: %.0f km", ch.goalDistanceMeters/1000.0))
-                                        .font(.caption)
-                                        .foregroundColor(.taqvoAccentText)
-                                    Spacer()
-                                    ProgressView(value: ch.progressFraction)
-                                        .tint(.taqvoCTA)
-                                        .frame(width: 120)
-                                }
-                            }
+                        withAnimation(.spring(response: 0.3)) {
+                            selectedTab = tab
                         }
-                        .listRowBackground(Color.black.opacity(0.08))
+                    } label: {
+                        VStack(spacing: 8) {
+                            Text(tab.rawValue)
+                                .font(.system(size: 16, weight: selectedTab == tab ? .semibold : .regular))
+                                .foregroundColor(selectedTab == tab ? .taqvoTextDark : .taqvoAccentText)
+                            
+                            Rectangle()
+                                .fill(selectedTab == tab ? Color.taqvoCTA : Color.clear)
+                                .frame(height: 3)
+                        }
+                        .frame(maxWidth: .infinity)
                     }
                 }
             }
-            .navigationTitle("Community")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        community.load()
-                        community.refreshProgress(from: store)
-                    } label: {
-                        Label("Reload", systemImage: "arrow.clockwise")
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            
+            // Content
+            ScrollView {
+                VStack(spacing: 16) {
+                    switch selectedTab {
+                    case .challenges:
+                        challengesContent
+                    case .leaderboard:
+                        leaderboardContent
+                    case .clubs:
+                        clubsContent
                     }
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                .padding(.vertical, 16)
+            }
+        }
+    }
+    
+    private var challengesContent: some View {
+        VStack(spacing: 16) {
+            ForEach(community.challenges) { challenge in
+                NavigationLink(destination: ChallengeDetailView(challenge: challenge)) {
+                    modernChallengeCard(challenge: challenge)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+    
+    private func modernChallengeCard(challenge: Challenge) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(challenge.title)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.taqvoTextDark)
+                    
+                    Text(challenge.detail)
+                        .font(.system(size: 14))
+                        .foregroundColor(.taqvoAccentText)
+                        .lineLimit(2)
+                }
+                
+                Spacer()
+                
+                Image(systemName: "flag.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(.taqvoCTA)
+            }
+            
+            // Progress
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Goal: \(String(format: "%.0f km", challenge.goalDistanceMeters/1000.0))")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.taqvoAccentText)
+                    
+                    Spacer()
+                    
+                    Text("\(Int(challenge.progressFraction * 100))%")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.taqvoCTA)
+                }
+                
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(height: 8)
+                            .cornerRadius(4)
+                        
+                        Rectangle()
+                            .fill(Color.taqvoCTA)
+                            .frame(width: geometry.size.width * CGFloat(challenge.progressFraction), height: 8)
+                            .cornerRadius(4)
+                    }
+                }
+                .frame(height: 8)
+            }
+            
+            // Join/Leave Button
+            Button {
+                community.toggleJoin(challengeID: challenge.id)
+                community.refreshProgress(from: store)
+                if community.challenges.first(where: { $0.id == challenge.id })?.isJoined == true {
+                    appState.activityIntent = .run
+                    appState.goalIntentType = .distance
+                    appState.goalIntentMeters = 5000
+                    appState.linkedChallengeTitle = challenge.title
+                    appState.linkedChallengeIsPublic = challenge.isPublic
+                    appState.navigateToActivity = true
+                }
+            } label: {
+                Text(challenge.isJoined ? "Leave Challenge" : "Join Challenge")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(challenge.isJoined ? .red : .black)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(challenge.isJoined ? Color.red.opacity(0.1) : Color.taqvoCTA)
+                    .cornerRadius(22)
+            }
+        }
+        .padding(20)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(16)
+    }
+    
+    private var leaderboardContent: some View {
+        VStack(spacing: 16) {
+            // Sort Picker
+            Picker("Sort", selection: $community.leaderboardSort) {
+                Text("Distance").tag(LeaderboardSort.distance)
+                Text("Pace").tag(LeaderboardSort.pace)
+                Text("Streak").tag(LeaderboardSort.streak)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .onChange(of: community.leaderboardSort) { sort in
+                community.setLeaderboardSort(sort)
+            }
+            
+            // Leaderboard Cards
+            VStack(spacing: 12) {
+                ForEach(community.leaderboard) { entry in
+                    leaderboardCard(entry: entry)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+    
+    private func leaderboardCard(entry: LeaderboardEntry) -> some View {
+        HStack(spacing: 16) {
+            // Rank Badge
+            ZStack {
+                Circle()
+                    .fill(entry.rank <= 3 ? Color.taqvoCTA.opacity(0.2) : Color.gray.opacity(0.2))
+                    .frame(width: 44, height: 44)
+                
+                Text("#\(entry.rank)")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(entry.rank <= 3 ? .taqvoCTA : .taqvoAccentText)
+            }
+            
+            // User Info
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.userName)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.taqvoTextDark)
+                
+                HStack(spacing: 8) {
+                    if let dur = entry.totalDurationSeconds {
+                        let paceStr = ActivityTrackingViewModel.formattedPace(distanceMeters: entry.totalDistanceMeters, durationSeconds: dur)
+                        Text(paceStr)
+                            .font(.system(size: 12))
+                            .foregroundColor(.taqvoAccentText)
+                    }
+                    if let streak = entry.currentStreakDays, streak > 0 {
+                        Text("• \(streak)d streak")
+                            .font(.system(size: 12))
+                            .foregroundColor(.taqvoAccentText)
+                    }
+                }
+            }
+            
+            Spacer()
+            
+            // Distance
+            Text(String(format: "%.1f km", entry.totalDistanceMeters/1000.0))
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.taqvoCTA)
+        }
+        .padding(16)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(16)
+    }
+    
+    private var clubsContent: some View {
+        VStack(spacing: 16) {
+            if community.clubs.isEmpty {
+                VStack(spacing: 16) {
+                    Text("No clubs yet")
+                        .font(.system(size: 16))
+                        .foregroundColor(.taqvoAccentText)
+                    
                     Button {
-                        showingCreateSheet = true
+                        showingCreateClubSheet = true
                     } label: {
-                        Label("Create Challenge", systemImage: "plus")
+                        HStack(spacing: 8) {
+                            Image(systemName: "plus.circle.fill")
+                            Text("Create First Club")
+                        }
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 12)
+                        .background(Color.taqvoCTA)
+                        .cornerRadius(20)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+            } else {
+                ForEach(community.clubs) { club in
+                    clubCard(club: club)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+    
+    private func clubCard(club: Club) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(club.name)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.taqvoTextDark)
+                    
+                    Text(club.description)
+                        .font(.system(size: 14))
+                        .foregroundColor(.taqvoAccentText)
+                        .lineLimit(2)
+                }
+                
+                Spacer()
+                
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(.taqvoCTA)
+            }
+            
+            Button {
+                community.toggleClubJoin(clubID: club.id)
+            } label: {
+                Text(club.isJoined ? "Leave Club" : "Join Club")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(club.isJoined ? .red : .taqvoCTA)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 8)
+                    .background(club.isJoined ? Color.red.opacity(0.1) : Color.taqvoCTA.opacity(0.1))
+                    .cornerRadius(16)
+            }
+        }
+        .padding(16)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(16)
+    }
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.taqvoBackgroundDark.ignoresSafeArea()
+                
+                if community.challenges.isEmpty && community.leaderboard.isEmpty {
+                    emptyStateView
+                } else {
+                    modernCommunityView
+                }
+            }
+            .navigationTitle("COMMUNITY")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    HStack(spacing: 16) {
+                        Button {
+                            community.load()
+                            community.refreshProgress(from: store)
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 20))
+                                .foregroundColor(.taqvoTextDark)
+                        }
+                        Button {
+                            showingCreateSheet = true
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(.taqvoCTA)
+                        }
                     }
                 }
             }
         }
         .onAppear {
-            if community.challenges.isEmpty { community.load() }
+            community.load()
             community.refreshProgress(from: store)
         }
         .sheet(isPresented: $showingCreateSheet) {
@@ -909,40 +1453,189 @@ struct CreateChallengeSheet: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Details") {
-                    TextField("Title", text: $title)
-                    TextField("Description", text: $detail, axis: .vertical)
-                }
-                Section("Schedule") {
-                    DatePicker("Start", selection: $startDate, displayedComponents: .date)
-                    DatePicker("End", selection: $endDate, in: startDate...Date.distantFuture, displayedComponents: .date)
-                }
-                Section("Goal") {
-                    Stepper(value: $goalKm, in: 1...1000, step: 1) {
-                        Text("Goal: \(Int(goalKm)) km")
+        ZStack {
+            Color.taqvoBackgroundDark.ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Custom Header
+                HStack {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Text("Cancel")
+                            .font(.system(size: 17))
+                            .foregroundColor(.taqvoCTA)
                     }
-                }
-                Section("Visibility") {
-                    Toggle("Public challenge", isOn: $isPublic)
-                        .tint(.taqvoCTA)
-                }
-                if let msg = errorMessage {
-                    Section {
-                        Text(msg)
-                            .foregroundColor(.red)
+                    
+                    Spacer()
+                    
+                    Button {
+                        submit()
+                    } label: {
+                        Text("Create")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(isValid && !creating ? .taqvoCTA : .gray)
                     }
+                    .disabled(!isValid || creating)
                 }
-            }
-            .navigationTitle("New Challenge")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") { submit() }
-                        .disabled(!isValid || creating)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+                
+                // Title
+                Text("New Challenge")
+                    .font(.system(size: 34, weight: .bold))
+                    .foregroundColor(.taqvoTextDark)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 24)
+                
+                // Content
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Details Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("DETAILS")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.taqvoAccentText)
+                            
+                            VStack(spacing: 0) {
+                                TextField("Title", text: $title)
+                                    .font(.system(size: 17))
+                                    .foregroundColor(.taqvoTextDark)
+                                    .padding(16)
+                                    .background(Color.black.opacity(0.2))
+                                
+                                Divider()
+                                    .background(Color.gray.opacity(0.3))
+                                
+                                TextField("Description", text: $detail, axis: .vertical)
+                                    .font(.system(size: 17))
+                                    .foregroundColor(.taqvoTextDark)
+                                    .padding(16)
+                                    .background(Color.black.opacity(0.2))
+                                    .lineLimit(3...6)
+                            }
+                            .cornerRadius(12)
+                        }
+                        
+                        // Schedule Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("SCHEDULE")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.taqvoAccentText)
+                            
+                            VStack(spacing: 0) {
+                                HStack {
+                                    Text("Start")
+                                        .font(.system(size: 17))
+                                        .foregroundColor(.taqvoTextDark)
+                                    Spacer()
+                                    DatePicker("", selection: $startDate, displayedComponents: .date)
+                                        .labelsHidden()
+                                        .colorScheme(.dark)
+                                }
+                                .padding(16)
+                                .background(Color.black.opacity(0.2))
+                                
+                                Divider()
+                                    .background(Color.gray.opacity(0.3))
+                                
+                                HStack {
+                                    Text("End")
+                                        .font(.system(size: 17))
+                                        .foregroundColor(.taqvoTextDark)
+                                    Spacer()
+                                    DatePicker("", selection: $endDate, in: startDate...Date.distantFuture, displayedComponents: .date)
+                                        .labelsHidden()
+                                        .colorScheme(.dark)
+                                }
+                                .padding(16)
+                                .background(Color.black.opacity(0.2))
+                            }
+                            .cornerRadius(12)
+                        }
+                        
+                        // Goal Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("GOAL")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.taqvoAccentText)
+                            
+                            HStack {
+                                Text("Goal: \(Int(goalKm)) km")
+                                    .font(.system(size: 17))
+                                    .foregroundColor(.taqvoTextDark)
+                                
+                                Spacer()
+                                
+                                HStack(spacing: 16) {
+                                    Button {
+                                        if goalKm > 1 {
+                                            goalKm -= 1
+                                        }
+                                    } label: {
+                                        Image(systemName: "minus")
+                                            .font(.system(size: 20, weight: .medium))
+                                            .foregroundColor(.taqvoTextDark)
+                                            .frame(width: 44, height: 44)
+                                            .background(Color.black.opacity(0.3))
+                                            .cornerRadius(22)
+                                    }
+                                    
+                                    Button {
+                                        if goalKm < 1000 {
+                                            goalKm += 1
+                                        }
+                                    } label: {
+                                        Image(systemName: "plus")
+                                            .font(.system(size: 20, weight: .medium))
+                                            .foregroundColor(.taqvoTextDark)
+                                            .frame(width: 44, height: 44)
+                                            .background(Color.black.opacity(0.3))
+                                            .cornerRadius(22)
+                                    }
+                                }
+                            }
+                            .padding(16)
+                            .background(Color.black.opacity(0.2))
+                            .cornerRadius(12)
+                        }
+                        
+                        // Visibility Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("VISIBILITY")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.taqvoAccentText)
+                            
+                            HStack {
+                                Text("Public challenge")
+                                    .font(.system(size: 17))
+                                    .foregroundColor(.taqvoTextDark)
+                                
+                                Spacer()
+                                
+                                Toggle("", isOn: $isPublic)
+                                    .labelsHidden()
+                                    .tint(.taqvoCTA)
+                            }
+                            .padding(16)
+                            .background(Color.black.opacity(0.2))
+                            .cornerRadius(12)
+                        }
+                        
+                        // Error Message
+                        if let msg = errorMessage {
+                            Text(msg)
+                                .font(.system(size: 14))
+                                .foregroundColor(.red)
+                                .padding(16)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.red.opacity(0.1))
+                                .cornerRadius(12)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 40)
                 }
             }
         }
@@ -1364,6 +2057,197 @@ struct InsightsView: View {
         }
     }
 
+    // MARK: - Modern UI Components
+    
+    private var emptyInsightsView: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "chart.xyaxis.line")
+                .font(.system(size: 80))
+                .foregroundColor(.taqvoCTA.opacity(0.6))
+            
+            Text("No Insights Yet")
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundColor(.taqvoTextDark)
+            
+            Text("Complete your first activity to start\ntracking your progress!")
+                .font(.system(size: 15))
+                .foregroundColor(.taqvoAccentText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    private var statsOverviewSection: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                statCard(
+                    title: "Current Streak",
+                    value: "\(store.activeDaysStreak())",
+                    unit: "days",
+                    icon: "flame.fill",
+                    color: .orange
+                )
+                
+                statCard(
+                    title: "Best Streak",
+                    value: "\(bestDaysStreak())",
+                    unit: "days",
+                    icon: "trophy.fill",
+                    color: .taqvoCTA
+                )
+            }
+            
+            HStack(spacing: 12) {
+                statCard(
+                    title: "Total Activities",
+                    value: "\(store.activities.count)",
+                    unit: "",
+                    icon: "figure.run",
+                    color: .blue
+                )
+                
+                statCard(
+                    title: "Total Distance",
+                    value: String(format: "%.0f", store.activities.reduce(0.0) { $0 + $1.distanceMeters } / 1000.0),
+                    unit: "km",
+                    icon: "location.fill",
+                    color: .purple
+                )
+            }
+            
+            // Streak visualization
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Last 14 Days")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.taqvoAccentText)
+                    .padding(.horizontal, 16)
+                
+                recentStreakRow()
+                    .padding(.horizontal, 16)
+            }
+            .padding(.vertical, 16)
+            .background(Color.black.opacity(0.2))
+            .cornerRadius(16)
+        }
+        .padding(.horizontal, 16)
+    }
+    
+    private func statCard(title: String, value: String, unit: String, icon: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundColor(color)
+                Spacer()
+            }
+            
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(value)
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.taqvoTextDark)
+                if !unit.isEmpty {
+                    Text(unit)
+                        .font(.system(size: 14))
+                        .foregroundColor(.taqvoAccentText)
+                }
+            }
+            
+            Text(title)
+                .font(.system(size: 12))
+                .foregroundColor(.taqvoAccentText)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(16)
+    }
+    
+    private func chartCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundColor(.taqvoCTA)
+                Text(title)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.taqvoTextDark)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            
+            content()
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+        }
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(16)
+    }
+    
+    private func modernMilestonesView() -> some View {
+        let totalDistance = store.activities.reduce(0.0) { $0 + $1.distanceMeters }
+        let longestRun = store.activities.map { $0.distanceMeters }.max() ?? 0
+        
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(.taqvoCTA)
+                Text("Milestones")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.taqvoTextDark)
+                Spacer()
+            }
+            
+            VStack(spacing: 12) {
+                Text("Single Activity")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.taqvoAccentText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                
+                HStack(spacing: 8) {
+                    modernMilestoneChip(title: "5K", achieved: longestRun >= 5_000)
+                    modernMilestoneChip(title: "10K", achieved: longestRun >= 10_000)
+                    modernMilestoneChip(title: "Half", achieved: longestRun >= 21_097)
+                    modernMilestoneChip(title: "Marathon", achieved: longestRun >= 42_195)
+                }
+                
+                Text("Total Distance")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.taqvoAccentText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 8)
+                
+                HStack(spacing: 8) {
+                    modernMilestoneChip(title: "100K", achieved: totalDistance >= 100_000)
+                    modernMilestoneChip(title: "250K", achieved: totalDistance >= 250_000)
+                    modernMilestoneChip(title: "500K", achieved: totalDistance >= 500_000)
+                    modernMilestoneChip(title: "1000K", achieved: totalDistance >= 1_000_000)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(16)
+    }
+    
+    private func modernMilestoneChip(title: String, achieved: Bool) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: achieved ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 24))
+                .foregroundColor(achieved ? .taqvoCTA : .gray.opacity(0.3))
+            
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(achieved ? .taqvoTextDark : .taqvoAccentText)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(achieved ? Color.taqvoCTA.opacity(0.1) : Color.black.opacity(0.1))
+        .cornerRadius(12)
+    }
+    
     @ViewBuilder
     private func summaryList(weekly: [WeeklySummary], daily: [DailySummary], monthly: [MonthlySummary]) -> some View {
         switch period {
@@ -1390,97 +2274,79 @@ struct InsightsView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
+            ZStack {
+                Color.taqvoBackgroundDark.ignoresSafeArea()
+                
                 let weekly: [WeeklySummary] = store.weeklySummaries()
                 let daily: [DailySummary] = store.dailySummaries()
                 let monthly: [MonthlySummary] = store.monthlySummaries()
                 let allEmpty = weekly.isEmpty && daily.isEmpty && monthly.isEmpty
 
                 if allEmpty {
-                    VStack(spacing: 12) {
-                        Text("No insights yet")
-                            .font(.title3)
-                            .foregroundColor(.taqvoTextDark)
-                        Text("Share your runs to build insights across periods.")
-                            .font(.caption)
-                            .foregroundColor(.taqvoAccentText)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    emptyInsightsView
                 } else {
                     ScrollView {
-                        VStack(spacing: 16) {
-                            // Active streak metric
-                            HStack {
-                                Text("Streak")
-                                    .font(.caption)
-                                    .foregroundColor(.taqvoAccentText)
-                                Spacer()
-                                Text("\(store.activeDaysStreak()) days")
-                                    .font(.headline)
-                                    .foregroundColor(.taqvoTextDark)
-                            }
-                            // Visual streak tracker (last 14 days)
-                            recentStreakRow()
-                            HStack {
-                                Text("Best streak")
-                                    .font(.caption)
-                                    .foregroundColor(.taqvoAccentText)
-                                Spacer()
-                                Text("\(bestDaysStreak()) days")
-                                    .font(.subheadline)
-                                    .foregroundColor(.taqvoTextDark)
-                            }
-
+                        VStack(spacing: 20) {
+                            // Stats Overview Cards
+                            statsOverviewSection
+                            
+                            // Period Selector
                             Picker("Period", selection: $period) {
                                 Text("Daily").tag(Period.daily)
                                 Text("Weekly").tag(Period.weekly)
                                 Text("Monthly").tag(Period.monthly)
                             }
                             .pickerStyle(.segmented)
+                            .padding(.horizontal, 16)
 
-                            // Compare progress with past weeks
-                            weeklyComparisonView(weekly: weekly)
+                            // Charts Section
+                            VStack(spacing: 16) {
+                                chartCard(title: "Distance", icon: "location.fill") {
+                                    distanceChart(weekly: weekly, daily: daily, monthly: monthly)
+                                }
+                                
+                                chartCard(title: "Pace", icon: "speedometer") {
+                                    paceChart(weekly: weekly, daily: daily, monthly: monthly)
+                                }
+                                
+                                chartCard(title: "Calories", icon: "flame.fill") {
+                                    caloriesChart(weekly: weekly, daily: daily, monthly: monthly)
+                                }
+                            }
+                            .padding(.horizontal, 16)
 
-                            // Distance chart
-                            distanceChart(weekly: weekly, daily: daily, monthly: monthly)
+                            // Milestones
+                            modernMilestonesView()
+                                .padding(.horizontal, 16)
 
-                            // Pace trend chart
-                            paceChart(weekly: weekly, daily: daily, monthly: monthly)
-
-                            // Calories chart
-                            caloriesChart(weekly: weekly, daily: daily, monthly: monthly)
-
-                            // Intensity chart (kcal/min)
-                            intensityChart(weekly: weekly, daily: daily, monthly: monthly)
-
-                            // Milestones grid (visuals)
-                            milestonesView()
-
-                            // Cards list
+                            // Summary List
                             summaryList(weekly: weekly, daily: daily, monthly: monthly)
+                                .padding(.horizontal, 16)
                         }
-                        .padding()
+                        .padding(.vertical, 16)
                     }
                 }
             }
-            .background(Color.taqvoBackgroundDark)
-            .navigationTitle("Insights")
+            .navigationTitle("INSIGHTS")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 let weekly = store.weeklySummaries()
                 let daily = store.dailySummaries()
                 let monthly = store.monthlySummaries()
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        community.refreshProgress(from: store)
-                    } label: {
-                        Label("Sync", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    ShareLink(item: exportInsightsCSV(period: period, weekly: weekly, daily: daily, monthly: monthly)) {
-                        Label("Share", systemImage: "square.and.arrow.up")
+                    HStack(spacing: 16) {
+                        Button {
+                            community.refreshProgress(from: store)
+                        } label: {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 20))
+                                .foregroundColor(.taqvoTextDark)
+                        }
+                        ShareLink(item: exportInsightsCSV(period: period, weekly: weekly, daily: daily, monthly: monthly)) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 20))
+                                .foregroundColor(.taqvoTextDark)
+                        }
                     }
                 }
             }
@@ -1736,6 +2602,7 @@ struct ProfileView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var store: ActivityStore
     @ObservedObject private var supabaseAuth = SupabaseAuthManager.shared
+    @StateObject private var profileService = ProfileService.shared
     @StateObject private var permissionsVM = PermissionsViewModel()
     @StateObject private var musicVM = MusicViewModel()
     @StateObject private var spotifyVM = SpotifyViewModel()
@@ -1747,10 +2614,9 @@ struct ProfileView: View {
 
     @State private var showSpotifyPicker: Bool = false
 
-    // New stored profile settings
-    @AppStorage("profileBio") private var profileBio: String = ""
-    @AppStorage("profileUsername") private var profileUsername: String = ""
-    @AppStorage("profileImageBase64") private var profileImageBase64: String = ""
+    // Profile settings - now using ProfileService
+
+    @State private var profileUsername: String = ""
     @AppStorage("postVisibility") private var postVisibilityRaw: String = PostVisibility.publicFeed.rawValue
     @AppStorage("notifyGoalCompletion") private var notifyGoalCompletion: Bool = true
     @AppStorage("notifyNewFollower") private var notifyNewFollower: Bool = true
@@ -1760,6 +2626,8 @@ struct ProfileView: View {
 
     @State private var selectedPhotoItem: PhotosPickerItem? = nil
     @State private var profileUIImage: UIImage? = nil
+    @State private var hasUnsavedChanges: Bool = false
+    @State private var showAuthErrorAlert: Bool = false
 
     enum PostVisibility: String, CaseIterable {
         case publicFeed = "public"
@@ -1770,324 +2638,72 @@ struct ProfileView: View {
     private var provider: MusicProvider {
         MusicProvider(rawValue: providerString) ?? .spotify
     }
-
-    private func decodeProfileImage() {
-        guard !profileImageBase64.isEmpty, let data = Data(base64Encoded: profileImageBase64) else { return }
-        profileUIImage = UIImage(data: data)
+    
+    private var totalActivities: Int {
+        store.activities.count
+    }
+    
+    private var totalDistance: Double {
+        store.activities.reduce(0) { $0 + $1.distanceMeters }
     }
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("Theme") {
-                    Picker("App Theme", selection: $appTheme) {
-                        Text("System").tag("system")
-                        Text("Light").tag("light")
-                        Text("Dark").tag("dark")
-                    }
-                    .pickerStyle(.segmented)
-
-                    Text("Typography: Helvetica Neue per PRD")
-                        .font(.caption)
-                        .foregroundColor(.taqvoAccentText)
-                }
-                .listRowBackground(Color.black.opacity(0.08))
-
-                // Profile section: photo + bio editing
-                Section("Profile") {
-                    HStack(spacing: 16) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.black.opacity(0.12))
-                                .frame(width: 72, height: 72)
-                            if let img = profileUIImage {
-                                Image(uiImage: img)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 68, height: 68)
-                                    .clipShape(Circle())
-                            } else {
-                                Image(systemName: "person.crop.circle")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .foregroundColor(.taqvoAccentText)
-                                    .frame(width: 52, height: 52)
-                            }
-                        }
-                        VStack(alignment: .leading, spacing: 8) {
-                            TextField("Add a username", text: $profileUsername)
-                                .textInputAutocapitalization(.never)
-                                .disableAutocorrection(true)
-                            TextField("Add a short bio", text: $profileBio)
-                                .textInputAutocapitalization(.sentences)
-                                .disableAutocorrection(false)
-                            PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                                Text("Edit Photo")
-                                    .foregroundColor(.taqvoTextLight)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 8)
-                                    .background(Color.taqvoCTA)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                        }
-                    }
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Profile Header
+                    profileHeaderSection
+                    
+                    // Stats Cards
+                    statsSection
+                    
+                    // Music Integration
+                    musicIntegrationSection
+                    
+                    // Privacy & Settings
+                    privacySettingsSection
+                    
+                    // Permissions
+                    permissionsSection
+                    
+                    // Preferences
+                    preferencesSection
+                    
+                    // Support
+                    supportSection
+                    
+                    // Sign Out
                     if supabaseAuth.isAuthenticated {
-                        Button("Sign out") {
+                        Button(action: {
                             SupabaseAuthManager.shared.signOut()
-                        }
-                        .foregroundColor(.taqvoTextLight)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color.taqvoCTA.opacity(0.9))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                }
-                .listRowBackground(Color.black.opacity(0.08))
-
-                Section("Music") {
-                    Picker("Provider", selection: $providerString) {
-                        Text("Apple").tag(MusicProvider.apple.rawValue)
-                        Text("Spotify").tag(MusicProvider.spotify.rawValue)
-                    }
-                    .pickerStyle(.segmented)
-
-                    if provider == .apple {
-                        HStack {
-                            Text("Apple Music")
-                                .foregroundColor(.taqvoTextDark)
-                            Spacer()
-                            Image(systemName: musicVM.isAuthorized ? "checkmark.circle.fill" : "exclamationmark.circle")
-                                .foregroundColor(musicVM.isAuthorized ? .taqvoCTA : .taqvoAccentText)
-                        }
-                        Button(musicVM.isAuthorized ? "Connected" : "Connect Apple Music") {
-                            musicVM.requestAuthorization()
-                        }
-                        .disabled(musicVM.isAuthorized)
-                        .foregroundColor(.taqvoTextLight)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color.taqvoCTA)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                    } else {
-                        HStack {
-                            Text("Spotify")
-                                .foregroundColor(.taqvoTextDark)
-                            Spacer()
-                            Image(systemName: spotifyVM.isAuthorized ? "checkmark.circle.fill" : "exclamationmark.circle")
-                                .foregroundColor(spotifyVM.isAuthorized ? .taqvoCTA : .taqvoAccentText)
-                        }
-                        Button(spotifyVM.isAuthorized ? "Connected" : "Connect Spotify") {
-                            spotifyVM.connect()
-                        }
-                        .disabled(spotifyVM.isAuthorized)
-                        .foregroundColor(.taqvoTextLight)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color.taqvoCTA)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-
-                        if spotifyVM.isAuthorized {
-                            Button("Choose Spotify Playlist") { showSpotifyPicker = true }
-                                .foregroundColor(.taqvoTextLight)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .background(Color.taqvoCTA.opacity(0.9))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                        }
-                    }
-
-                    Toggle("Auto stop music when run ends", isOn: $autoStopMusicOnEnd)
-                        .tint(.taqvoCTA)
-                        .foregroundColor(.taqvoTextDark)
-                }
-                .listRowBackground(Color.black.opacity(0.08))
-
-                // Activity visibility
-                Section("Activity Visibility") {
-                    Picker("Post Visibility", selection: $postVisibilityRaw) {
-                        Text("Public").tag(PostVisibility.publicFeed.rawValue)
-                        Text("Friends").tag(PostVisibility.friends.rawValue)
-                        Text("Private").tag(PostVisibility.privateOnly.rawValue)
-                    }
-                    .pickerStyle(.segmented)
-                    Text("Controls default privacy for new feed posts.")
-                        .font(.caption)
-                        .foregroundColor(.taqvoAccentText)
-                }
-                .listRowBackground(Color.black.opacity(0.08))
-
-                // Notifications
-                Section("Notifications") {
-                    Toggle("Goal completion", isOn: $notifyGoalCompletion)
-                        .tint(.taqvoCTA)
-                        .foregroundColor(.taqvoTextDark)
-                    Toggle("New followers", isOn: $notifyNewFollower)
-                        .tint(.taqvoCTA)
-                        .foregroundColor(.taqvoTextDark)
-                    Toggle("Comments on my posts", isOn: $notifyComments)
-                        .tint(.taqvoCTA)
-                        .foregroundColor(.taqvoTextDark)
-                    Toggle("Weekly stats recap", isOn: $notifyWeeklyStats)
-                        .tint(.taqvoCTA)
-                        .foregroundColor(.taqvoTextDark)
-                }
-                .listRowBackground(Color.black.opacity(0.08))
-
-                // Language
-                Section("Language") {
-                    Picker("Preferred Language", selection: $preferredLanguageCode) {
-                        Text("English").tag("en")
-                        Text("Spanish").tag("es")
-                        Text("French").tag("fr")
-                        Text("German").tag("de")
-                        Text("Portuguese").tag("pt")
-                        Text("Japanese").tag("ja")
-                    }
-                    .pickerStyle(.menu)
-                    Text("Applies to UI labels (requires app restart).")
-                        .font(.caption)
-                        .foregroundColor(.taqvoAccentText)
-                }
-                .listRowBackground(Color.black.opacity(0.08))
-
-
-                // Support & Help
-                Section("Support & Help") {
-                    NavigationLink("Help & FAQ") { SupportView() }
-                    Link("Contact Support", destination: URL(string: "mailto:support@taqvo.app")!)
-                        .foregroundColor(.taqvoCTA)
-                }
-                .listRowBackground(Color.black.opacity(0.08))
-
-                Section("Privacy & Permissions") {
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text("Location")
-                                .font(.headline)
-                                .foregroundColor(.taqvoTextDark)
-                            Text("Required for route tracking")
-                                .font(.caption)
-                                .foregroundColor(.taqvoAccentText)
-                        }
-                        Spacer()
-                        Button(action: { permissionsVM.requestLocationAuthorization() }) {
-                            Text(appState.locationAuthorized ? "Enabled" : "Enable")
-                                .foregroundColor(.taqvoTextLight)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(Color.taqvoCTA)
-                                .cornerRadius(12)
-                        }
-                        .disabled(appState.locationAuthorized)
-                    }
-
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text("Motion & Fitness")
-                                .font(.headline)
-                                .foregroundColor(.taqvoTextDark)
-                            Text("Required for steps and cadence")
-                                .font(.caption)
-                                .foregroundColor(.taqvoAccentText)
-                        }
-                        Spacer()
-                        Button(action: {
-                            permissionsVM.requestMotionAuthorization { granted in
-                                appState.motionAuthorized = granted
-                            }
                         }) {
-                            Text(appState.motionAuthorized ? "Enabled" : "Enable")
-                                .foregroundColor(.taqvoTextLight)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(Color.taqvoCTA)
-                                .cornerRadius(12)
-                        }
-                        .disabled(appState.motionAuthorized)
-                    }
-
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text("Background Tracking")
-                                .font(.headline)
-                                .foregroundColor(.taqvoTextDark)
-                            Text("Allows tracking if screen locks or you switch apps")
-                                .font(.caption)
-                                .foregroundColor(.taqvoAccentText)
-                        }
-                        Spacer()
-                        Button(action: { permissionsVM.requestAlwaysAuthorization() }) {
-                            Text(appState.backgroundTrackingEnabled ? "Enabled" : "Enable")
-                                .foregroundColor(.taqvoTextLight)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(Color.taqvoCTA)
-                                .cornerRadius(12)
-                        }
-                        .disabled(appState.backgroundTrackingEnabled)
-                    }
-
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text("Apple Health")
-                                .font(.headline)
-                                .foregroundColor(.taqvoTextDark)
-                            Text("Sync workouts and steps")
-                                .font(.caption)
-                                .foregroundColor(.taqvoAccentText)
-                        }
-                        Spacer()
-                        Button(action: {
-                            permissionsVM.requestHealthAuthorization { granted in
-                                appState.healthAuthorized = granted
+                            HStack {
+                                Image(systemName: "rectangle.portrait.and.arrow.right")
+                                Text("Sign Out")
+                                    .font(.taqvo(.headline))
                             }
-                        }) {
-                            Text(appState.healthAuthorized ? "Enabled" : "Enable")
-                                .foregroundColor(.taqvoTextLight)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(Color.taqvoCTA)
-                                .cornerRadius(12)
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Color.black.opacity(0.2))
+                            .cornerRadius(16)
                         }
-                        .disabled(appState.healthAuthorized)
+                        .padding(.horizontal, 20)
                     }
-
-                    Toggle("Save workouts to Health by default", isOn: $healthSyncEnabled)
-                        .tint(.taqvoCTA)
-                        .foregroundColor(.taqvoTextDark)
-
-                    // Import past workouts from Apple Health
-                    Button("Import Past Workouts") {
-                        Task {
-                            let ok = await health.ensureAuthorization()
-                            guard ok else { return }
-                            let imported = await health.importWorkouts(daysBack: 180)
-                            for s in imported {
-                                let hr = await health.averageHeartRateBPM(start: s.startDate, end: s.endDate)
-                                await MainActor.run {
-                                    store.add(summary: s, snapshot: nil, note: "Imported from Apple Health", photo: nil, avgHeartRateBPM: hr)
-                                }
-                            }
-                        }
-                    }
-                    .disabled(!appState.healthAuthorized)
-                    .foregroundColor(.taqvoTextLight)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(Color.taqvoCTA.opacity(0.9))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    
+                    Spacer(minLength: 40)
                 }
-                .listRowBackground(Color.black.opacity(0.08))
+                .padding(.top, 20)
             }
-            .scrollContentBackground(.hidden)
-            .background(Color.taqvoBackgroundDark)
+            .background(Color.taqvoBackgroundDark.ignoresSafeArea())
             .navigationTitle("Profile")
+            .navigationBarTitleDisplayMode(.large)
             .onAppear {
                 appState.locationAuthorized = permissionsVM.locationAuthorizedState
                 appState.motionAuthorized = PermissionsViewModel.motionAuthorized()
                 appState.healthAuthorized = PermissionsViewModel.healthAuthorized()
                 appState.backgroundTrackingEnabled = permissionsVM.alwaysAuthorizedState
-                decodeProfileImage()
+                loadProfileData()
             }
             .onReceive(permissionsVM.$locationAuthorizedState) { authorized in
                 appState.locationAuthorized = authorized
@@ -2100,24 +2716,633 @@ struct ProfileView: View {
                 Task {
                     if let data = try? await item.loadTransferable(type: Data.self) {
                         profileUIImage = UIImage(data: data)
-                        profileImageBase64 = data.base64EncodedString()
+                        hasUnsavedChanges = true
                     }
                 }
+            }
+            .onChange(of: profileUsername) { _ in
+                hasUnsavedChanges = true
             }
             .sheet(isPresented: $showSpotifyPicker) {
                 SpotifyPlaylistPickerView(spotifyVM: spotifyVM)
             }
             .alert(
                 "Sign in failed",
-                isPresented: Binding(
-                    get: { supabaseAuth.lastAuthError != nil },
-                    set: { showing in if !showing { SupabaseAuthManager.shared.lastAuthError = nil } }
-                )
+                isPresented: $showAuthErrorAlert
             ) {
-                Button("OK", role: .cancel) { }
+                Button("OK", role: .cancel) {
+                    SupabaseAuthManager.shared.lastAuthError = nil
+                }
             } message: {
                 Text(supabaseAuth.lastAuthError ?? "")
             }
+            .onChange(of: supabaseAuth.lastAuthError) { error in
+                showAuthErrorAlert = error != nil
+            }
+        }
+    }
+    
+    // MARK: - Section Views
+    
+    private var profileHeaderSection: some View {
+        VStack(spacing: 16) {
+            PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                ZStack(alignment: .bottomTrailing) {
+                    if let img = profileUIImage {
+                        Image(uiImage: img)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 100, height: 100)
+                            .clipShape(Circle())
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.taqvoCTA, lineWidth: 3)
+                            )
+                    } else {
+                        Circle()
+                            .fill(Color.black.opacity(0.3))
+                            .frame(width: 100, height: 100)
+                            .overlay(
+                                Image(systemName: "person.crop.circle.fill")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .foregroundColor(.taqvoAccentText)
+                                    .frame(width: 60, height: 60)
+                            )
+                    }
+                    
+                    Circle()
+                        .fill(Color.taqvoCTA)
+                        .frame(width: 32, height: 32)
+                        .overlay(
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(.taqvoTextLight)
+                        )
+                }
+            }
+            
+            VStack(spacing: 8) {
+                TextField("Username", text: $profileUsername)
+                    .font(.taqvo(.title))
+                    .foregroundColor(.taqvoTextDark)
+                    .multilineTextAlignment(.center)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                    .padding(.horizontal, 40)
+                
+                // Display user email from database
+                if let email = supabaseAuth.userEmail {
+                    HStack(spacing: 6) {
+                        Image(systemName: "envelope.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(.taqvoAccentText)
+                        Text(email)
+                            .font(.system(size: 14))
+                            .foregroundColor(.taqvoAccentText)
+                    }
+                    .padding(.top, 4)
+                }
+                
+                if hasUnsavedChanges {
+                    Button(action: {
+                        Task {
+                            await saveProfileData()
+                        }
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.circle.fill")
+                            Text("Save Changes")
+                                .font(.taqvo(.body))
+                        }
+                        .foregroundColor(.taqvoTextLight)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(Color.taqvoCTA)
+                        .cornerRadius(20)
+                    }
+                    .disabled(profileService.isLoading)
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+    }
+    
+    private var statsSection: some View {
+        HStack(spacing: 12) {
+            statCard(title: "Activities", value: "\(totalActivities)", icon: "figure.run")
+            statCard(title: "Distance", value: String(format: "%.1f km", totalDistance / 1000), icon: "location.fill")
+            statCard(title: "Streak", value: "0", icon: "flame.fill")
+        }
+        .padding(.horizontal, 20)
+    }
+    
+    private func statCard(title: String, value: String, icon: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 20))
+                .foregroundColor(.taqvoCTA)
+            
+            Text(value)
+                .font(.taqvo(.title))
+                .foregroundColor(.taqvoTextDark)
+            
+            Text(title)
+                .font(.taqvo(.caption))
+                .foregroundColor(.taqvoAccentText)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(16)
+    }
+    
+    private func sectionHeader(title: String, icon: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 16))
+                .foregroundColor(.taqvoCTA)
+            Text(title)
+                .font(.taqvo(.headline))
+                .foregroundColor(.taqvoTextDark)
+        }
+        .padding(.horizontal, 20)
+    }
+    
+    private var musicIntegrationSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionHeader(title: "Music Integration", icon: "music.note")
+            
+            VStack(spacing: 0) {
+                Picker("Provider", selection: $providerString) {
+                    Text("Apple Music").tag(MusicProvider.apple.rawValue)
+                    Text("Spotify").tag(MusicProvider.spotify.rawValue)
+                }
+                .pickerStyle(.segmented)
+                .padding(16)
+                
+                Divider()
+                    .background(Color.taqvoAccentText.opacity(0.3))
+                    .padding(.horizontal, 16)
+                
+                if provider == .apple {
+                    musicProviderRow(
+                        name: "Apple Music",
+                        isConnected: musicVM.isAuthorized,
+                        action: { musicVM.requestAuthorization() }
+                    )
+                } else {
+                    musicProviderRow(
+                        name: "Spotify",
+                        isConnected: spotifyVM.isAuthorized,
+                        action: { spotifyVM.connect() }
+                    )
+                    
+                    if spotifyVM.isAuthorized {
+                        Divider()
+                            .background(Color.taqvoAccentText.opacity(0.3))
+                            .padding(.horizontal, 16)
+                        
+                        Button(action: { showSpotifyPicker = true }) {
+                            HStack {
+                                Image(systemName: "music.note.list")
+                                    .foregroundColor(.taqvoCTA)
+                                Text("Choose Playlist")
+                                    .font(.taqvo(.body))
+                                    .foregroundColor(.taqvoTextDark)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.taqvoAccentText)
+                            }
+                            .padding(16)
+                        }
+                    }
+                }
+                
+                Divider()
+                    .background(Color.taqvoAccentText.opacity(0.3))
+                    .padding(.horizontal, 16)
+                
+                Toggle(isOn: $autoStopMusicOnEnd) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "stop.circle")
+                            .foregroundColor(.taqvoCTA)
+                        Text("Auto-stop on activity end")
+                            .font(.taqvo(.body))
+                            .foregroundColor(.taqvoTextDark)
+                    }
+                }
+                .tint(.taqvoCTA)
+                .padding(16)
+            }
+            .background(Color.black.opacity(0.2))
+            .cornerRadius(16)
+        }
+        .padding(.horizontal, 20)
+    }
+    
+    private func musicProviderRow(name: String, isConnected: Bool, action: @escaping () -> Void) -> some View {
+        HStack {
+            HStack(spacing: 12) {
+                Image(systemName: isConnected ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(isConnected ? .taqvoCTA : .taqvoAccentText)
+                    .font(.system(size: 20))
+                
+                Text(name)
+                    .font(.taqvo(.body))
+                    .foregroundColor(.taqvoTextDark)
+            }
+            
+            Spacer()
+            
+            if !isConnected {
+                Button(action: action) {
+                    Text("Connect")
+                        .font(.taqvo(.body))
+                        .foregroundColor(.taqvoTextLight)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.taqvoCTA)
+                        .cornerRadius(12)
+                }
+            } else {
+                Text("Connected")
+                    .font(.taqvo(.caption))
+                    .foregroundColor(.taqvoAccentText)
+            }
+        }
+        .padding(16)
+    }
+    
+    private var privacySettingsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionHeader(title: "Privacy & Settings", icon: "lock.shield")
+            
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Post Visibility")
+                        .font(.taqvo(.body))
+                        .foregroundColor(.taqvoTextDark)
+                    
+                    Picker("Post Visibility", selection: $postVisibilityRaw) {
+                        Text("Public").tag(PostVisibility.publicFeed.rawValue)
+                        Text("Friends").tag(PostVisibility.friends.rawValue)
+                        Text("Private").tag(PostVisibility.privateOnly.rawValue)
+                    }
+                    .pickerStyle(.segmented)
+                    
+                    Text("Controls default privacy for new feed posts")
+                        .font(.taqvo(.caption))
+                        .foregroundColor(.taqvoAccentText)
+                }
+                .padding(16)
+                
+                Divider()
+                    .background(Color.taqvoAccentText.opacity(0.3))
+                    .padding(.horizontal, 16)
+                
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Notifications")
+                        .font(.taqvo(.body))
+                        .foregroundColor(.taqvoTextDark)
+                        .padding(.bottom, 4)
+                    
+                    Toggle(isOn: $notifyGoalCompletion) {
+                        Text("Goal completion")
+                            .font(.taqvo(.body))
+                            .foregroundColor(.taqvoTextDark)
+                    }
+                    .tint(.taqvoCTA)
+                    
+                    Toggle(isOn: $notifyNewFollower) {
+                        Text("New followers")
+                            .font(.taqvo(.body))
+                            .foregroundColor(.taqvoTextDark)
+                    }
+                    .tint(.taqvoCTA)
+                    
+                    Toggle(isOn: $notifyComments) {
+                        Text("Comments on posts")
+                            .font(.taqvo(.body))
+                            .foregroundColor(.taqvoTextDark)
+                    }
+                    .tint(.taqvoCTA)
+                    
+                    Toggle(isOn: $notifyWeeklyStats) {
+                        Text("Weekly stats recap")
+                            .font(.taqvo(.body))
+                            .foregroundColor(.taqvoTextDark)
+                    }
+                    .tint(.taqvoCTA)
+                }
+                .padding(16)
+            }
+            .background(Color.black.opacity(0.2))
+            .cornerRadius(16)
+        }
+        .padding(.horizontal, 20)
+    }
+    
+    private var permissionsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionHeader(title: "Permissions", icon: "checkmark.shield")
+            
+            VStack(spacing: 0) {
+                permissionRow(
+                    title: "Location",
+                    subtitle: "Required for route tracking",
+                    isEnabled: appState.locationAuthorized,
+                    action: { permissionsVM.requestLocationAuthorization() }
+                )
+                
+                Divider()
+                    .background(Color.taqvoAccentText.opacity(0.3))
+                    .padding(.horizontal, 16)
+                
+                permissionRow(
+                    title: "Motion & Fitness",
+                    subtitle: "Required for steps and cadence",
+                    isEnabled: appState.motionAuthorized,
+                    action: {
+                        permissionsVM.requestMotionAuthorization { granted in
+                            appState.motionAuthorized = granted
+                        }
+                    }
+                )
+                
+                Divider()
+                    .background(Color.taqvoAccentText.opacity(0.3))
+                    .padding(.horizontal, 16)
+                
+                permissionRow(
+                    title: "Background Tracking",
+                    subtitle: "Track with screen locked",
+                    isEnabled: appState.backgroundTrackingEnabled,
+                    action: { permissionsVM.requestAlwaysAuthorization() }
+                )
+                
+                Divider()
+                    .background(Color.taqvoAccentText.opacity(0.3))
+                    .padding(.horizontal, 16)
+                
+                permissionRow(
+                    title: "Apple Health",
+                    subtitle: "Sync workouts and steps",
+                    isEnabled: appState.healthAuthorized,
+                    action: {
+                        permissionsVM.requestHealthAuthorization { granted in
+                            appState.healthAuthorized = granted
+                        }
+                    }
+                )
+                
+                Divider()
+                    .background(Color.taqvoAccentText.opacity(0.3))
+                    .padding(.horizontal, 16)
+                
+                Toggle(isOn: $healthSyncEnabled) {
+                    Text("Save workouts to Health by default")
+                        .font(.taqvo(.body))
+                        .foregroundColor(.taqvoTextDark)
+                }
+                .tint(.taqvoCTA)
+                .padding(16)
+                
+                Divider()
+                    .background(Color.taqvoAccentText.opacity(0.3))
+                    .padding(.horizontal, 16)
+                
+                Button(action: {
+                    Task {
+                        let ok = await health.ensureAuthorization()
+                        guard ok else { return }
+                        let imported = await health.importWorkouts(daysBack: 180)
+                        for s in imported {
+                            let hr = await health.averageHeartRateBPM(start: s.startDate, end: s.endDate)
+                            await MainActor.run {
+                                store.add(summary: s, snapshot: nil, note: "Imported from Apple Health", photo: nil, avgHeartRateBPM: hr)
+                            }
+                        }
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: "square.and.arrow.down")
+                        Text("Import Past Workouts")
+                            .font(.taqvo(.body))
+                    }
+                    .foregroundColor(.taqvoTextLight)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(appState.healthAuthorized ? Color.taqvoCTA : Color.gray.opacity(0.3))
+                    .cornerRadius(12)
+                }
+                .disabled(!appState.healthAuthorized)
+                .padding(16)
+            }
+            .background(Color.black.opacity(0.2))
+            .cornerRadius(16)
+        }
+        .padding(.horizontal, 20)
+    }
+    
+    private func permissionRow(title: String, subtitle: String, isEnabled: Bool, action: @escaping () -> Void) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.taqvo(.body))
+                    .foregroundColor(.taqvoTextDark)
+                Text(subtitle)
+                    .font(.taqvo(.caption))
+                    .foregroundColor(.taqvoAccentText)
+            }
+            
+            Spacer()
+            
+            Button(action: action) {
+                Text(isEnabled ? "Enabled" : "Enable")
+                    .font(.taqvo(.caption))
+                    .foregroundColor(.taqvoTextLight)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(isEnabled ? Color.gray.opacity(0.3) : Color.taqvoCTA)
+                    .cornerRadius(8)
+            }
+            .disabled(isEnabled)
+        }
+        .padding(16)
+    }
+    
+    private var preferencesSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionHeader(title: "Preferences", icon: "slider.horizontal.3")
+            
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("App Theme")
+                        .font(.taqvo(.body))
+                        .foregroundColor(.taqvoTextDark)
+                    
+                    Picker("App Theme", selection: $appTheme) {
+                        Text("System").tag("system")
+                        Text("Light").tag("light")
+                        Text("Dark").tag("dark")
+                    }
+                    .pickerStyle(.segmented)
+                }
+                .padding(16)
+                
+                Divider()
+                    .background(Color.taqvoAccentText.opacity(0.3))
+                    .padding(.horizontal, 16)
+                
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Language")
+                            .font(.taqvo(.body))
+                            .foregroundColor(.taqvoTextDark)
+                        Text("Requires app restart")
+                            .font(.taqvo(.caption))
+                            .foregroundColor(.taqvoAccentText)
+                    }
+                    
+                    Spacer()
+                    
+                    Picker("Language", selection: $preferredLanguageCode) {
+                        Text("English").tag("en")
+                        Text("Spanish").tag("es")
+                        Text("French").tag("fr")
+                        Text("German").tag("de")
+                        Text("Portuguese").tag("pt")
+                        Text("Japanese").tag("ja")
+                    }
+                    .pickerStyle(.menu)
+                    .tint(.taqvoCTA)
+                }
+                .padding(16)
+            }
+            .background(Color.black.opacity(0.2))
+            .cornerRadius(16)
+        }
+        .padding(.horizontal, 20)
+    }
+    
+    private var supportSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionHeader(title: "Support", icon: "questionmark.circle")
+            
+            VStack(spacing: 0) {
+                NavigationLink(destination: SupportView()) {
+                    HStack {
+                        Image(systemName: "book")
+                            .foregroundColor(.taqvoCTA)
+                        Text("Help & FAQ")
+                            .font(.taqvo(.body))
+                            .foregroundColor(.taqvoTextDark)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12))
+                            .foregroundColor(.taqvoAccentText)
+                    }
+                    .padding(16)
+                }
+                
+                Divider()
+                    .background(Color.taqvoAccentText.opacity(0.3))
+                    .padding(.horizontal, 16)
+                
+                Link(destination: URL(string: "mailto:support@taqvo.app")!) {
+                    HStack {
+                        Image(systemName: "envelope")
+                            .foregroundColor(.taqvoCTA)
+                        Text("Contact Support")
+                            .font(.taqvo(.body))
+                            .foregroundColor(.taqvoTextDark)
+                        Spacer()
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 12))
+                            .foregroundColor(.taqvoAccentText)
+                    }
+                    .padding(16)
+                }
+            }
+            .background(Color.black.opacity(0.2))
+            .cornerRadius(16)
+        }
+        .padding(.horizontal, 20)
+    }
+    
+    // MARK: - Profile Data Management
+    
+    private func loadProfileData() {
+        Task {
+            await profileService.loadCurrentUserProfile()
+            await MainActor.run {
+                if let profile = profileService.currentProfile {
+                    profileUsername = profile.username ?? ""
+                    
+                    // Load profile image if available
+                    if let avatarUrl = profile.avatarUrl, !avatarUrl.isEmpty {
+                        loadProfileImage(from: avatarUrl)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func saveProfileData() async {
+        guard hasUnsavedChanges else { return }
+        
+        print("DEBUG: Saving profile data - Username: '\(profileUsername)', Has Image: \(profileUIImage != nil)")
+        
+        do {
+            try await profileService.updateCurrentUserProfile(
+                username: profileUsername.isEmpty ? nil : profileUsername,
+                profileImage: profileUIImage
+            )
+            
+            await MainActor.run {
+                hasUnsavedChanges = false
+            }
+            
+            print("DEBUG: Profile data saved successfully")
+            print("DEBUG: Current profile after save: \(String(describing: profileService.currentProfile))")
+        } catch {
+            print("ERROR: Failed to save profile data: \(error)")
+        }
+    }
+    
+    private func loadProfileImage(from urlOrDataString: String) {
+        // Handle data URL: data:image/...;base64,<base64>
+        if urlOrDataString.hasPrefix("data:") {
+            if let commaIndex = urlOrDataString.firstIndex(of: ",") {
+                let base64Part = String(urlOrDataString[urlOrDataString.index(after: commaIndex)...])
+                if let data = Data(base64Encoded: base64Part), let image = UIImage(data: data) {
+                    DispatchQueue.main.async { self.profileUIImage = image }
+                }
+            }
+            return
+        }
+        
+        // Handle HTTP(S) URL from Supabase Storage
+        if urlOrDataString.hasPrefix("http://") || urlOrDataString.hasPrefix("https://") {
+            guard let url = URL(string: urlOrDataString) else { return }
+            Task {
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: url)
+                    if let image = UIImage(data: data) {
+                        await MainActor.run { self.profileUIImage = image }
+                    }
+                } catch {
+                    print("ERROR: Failed to load profile image from URL: \(error)")
+                }
+            }
+            return
+        }
+        
+        // Fallback: treat as raw base64 string
+        if let data = Data(base64Encoded: urlOrDataString), let image = UIImage(data: data) {
+            DispatchQueue.main.async { self.profileUIImage = image }
         }
     }
 }

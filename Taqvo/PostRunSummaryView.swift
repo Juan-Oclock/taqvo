@@ -21,206 +21,296 @@ struct PostRunSummaryView: View {
     @StateObject private var health = HealthSyncService()
     @State private var saveToHealth: Bool = UserDefaults.standard.bool(forKey: "healthSyncEnabled")
     @State private var healthSaveMessage: String?
-    // Added metrics
     @State private var stepsCount: Int?
     @State private var cadenceSPM: Double?
     @State private var elevationGainMeters: Double?
-    // Optional custom title for the activity
     @State private var activityTitle: String = ""
+    @State private var selectedVisibility: PostVisibility = .privateOnly
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                if let img = snapshot {
-                    Image(uiImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .cornerRadius(12)
-                } else {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(height: 220)
-                        .overlay(Text("Generating map…").foregroundColor(.taqvoAccentText))
-                        .cornerRadius(12)
+        ZStack {
+            Color.taqvoBackgroundDark.ignoresSafeArea()
+            
+            ScrollView {
+                LazyVStack(spacing: 20) {
+                    // Map Section
+                    mapSection
+                    
+                    // Stats Grid
+                    statsSection
+                    
+                    // Input Fields
+                    inputSection
+                    
+                    // Privacy
+                    privacySection
+                    
+                    // Photo Picker
+                    photoPickerButton
+                    
+                    // Health Toggle
+                    healthSection
+                    
+                    // Action Buttons
+                    actionButtons
                 }
-
-                if let photo = selectedPhoto {
-                    Image(uiImage: photo)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .cornerRadius(12)
-                }
-
-                // Metrics
-                HStack(spacing: 16) {
-                    metric("Type", summary.kind.rawValue.capitalized)
-                    metric("Distance", String(format: "%.2f km", summary.distanceMeters/1000.0))
-                    metric("Duration", ActivityTrackingViewModel.formattedDuration(summary.durationSeconds))
-                }
-                HStack(spacing: 16) {
-                    metric("Avg Pace", ActivityTrackingViewModel.formattedPace(distanceMeters: summary.distanceMeters, durationSeconds: summary.durationSeconds))
-                    metric("Calories", String(format: "%.0f kcal", summary.caloriesKilocalories))
-                }
-                // New metrics row
-                HStack(spacing: 16) {
-                    let cadenceText: String = {
-                        if let spm = cadenceSPM { return String(format: "%.0f spm", spm) }
-                        else { return "—" }
-                    }()
-                    let stepsText: String = {
-                        if let steps = stepsCount { return String(steps) } else { return "—" }
-                    }()
-                    let elevationText: String = {
-                        if let elev = elevationGainMeters { return String(format: "%.0f m", elev) } else { return "—" }
-                    }()
-                    metric("Cadence", cadenceText)
-                    metric("Steps", stepsText)
-                    metric("Elevation", elevationText)
-                }
-
-                // Note input
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Title (optional)")
-                        .font(.caption)
-                        .foregroundColor(.taqvoAccentText)
-                    TextField("e.g., Morning Run", text: $activityTitle)
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Add a note")
-                        .font(.caption)
-                        .foregroundColor(.taqvoAccentText)
-                    TextField("How did it feel?", text: $note, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
-                        .lineLimit(3...6)
-                }
-
-                // Photo picker
-                PhotosPicker(selection: $selectedPhotoItem, matching: .images, photoLibrary: .shared()) {
-                    HStack {
-                        Image(systemName: "photo")
-                        Text(selectedPhoto == nil ? "Add a photo" : "Change photo")
-                    }
-                    .font(.headline)
-                    .foregroundColor(.taqvoTextLight)
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(Color.white.opacity(0.85))
-                    .cornerRadius(16)
-                }
-                .onChange(of: selectedPhotoItem) { _, newItem in
-                    Task {
-                        if let item = newItem {
-                            do {
-                                if let data: Data = try await item.loadTransferable(type: Data.self) {
-                                    if let img = UIImage(data: data) {
-                                        await MainActor.run { selectedPhoto = img }
-                                    }
-                                }
-                            } catch {
-                                // silently ignore photo load errors
-                            }
-                        }
-                    }
-                }
-
-                // Save to Apple Health toggle
-                VStack(alignment: .leading, spacing: 8) {
-                    Toggle(isOn: $saveToHealth) {
-                        HStack {
-                            Image(systemName: "heart.fill").foregroundColor(.red)
-                            Text("Save to Apple Health")
-                        }
-                    }
-                    .disabled(!health.authorized)
-                    .tint(.taqvoCTA)
-
-                    if !health.authorized {
-                        Text("Enable Health access in Settings to save workouts.")
-                            .font(.caption)
-                            .foregroundColor(.taqvoAccentText)
-                    }
-                    if let msg = healthSaveMessage, !msg.isEmpty {
-                        Text(msg)
-                            .font(.caption)
-                            .foregroundColor(.taqvoAccentText)
-                    }
-                }
-                .onChange(of: saveToHealth) { _, newVal in
-                    UserDefaults.standard.set(newVal, forKey: "healthSyncEnabled")
-                }
-
-                HStack(spacing: 12) {
-                    ShareLink(item: summaryShareImageURL()) {
-                        HStack {
-                            Image(systemName: "square.and.arrow.up")
-                            Text("Share Image")
-                        }
-                        .font(.headline)
-                        .foregroundColor(.taqvoTextLight)
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(Color.white.opacity(0.85))
-                        .cornerRadius(16)
-                    }
-
-                    Button {
-                        Task {
-                            await handleShareTap()
-                        }
-                    } label: {
-                        Text("Share to Feed")
-                            .font(.headline)
-                            .foregroundColor(.taqvoTextLight)
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(Color.taqvoCTA)
-                            .cornerRadius(16)
-                    }
-                }
-            }
-            .padding()
-        }
-        .onAppear {
-            generateSnapshot()
-        }
-        .task {
-            let ok = await health.ensureAuthorization()
-            if ok && UserDefaults.standard.object(forKey: "healthSyncEnabled") == nil {
-                saveToHealth = true
-                UserDefaults.standard.set(true, forKey: "healthSyncEnabled")
-            }
-            // Fetch metrics when possible
-            if ok {
-                if let steps = await health.stepCount(start: summary.startDate, end: summary.endDate) {
-                    stepsCount = steps
-                    if cadenceSPM == nil {
-                        let minutes = max(summary.durationSeconds / 60.0, 0.001)
-                        cadenceSPM = Double(steps) / minutes
-                    }
-                }
-                if let cadence = await health.averageCadenceSPM(start: summary.startDate, end: summary.endDate) {
-                    cadenceSPM = cadence
-                }
-                if let elev = await health.elevationGainMeters(start: summary.startDate, end: summary.endDate) {
-                    elevationGainMeters = elev
-                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 20)
             }
         }
-        .navigationTitle("Summary")
-        .background(Color.taqvoBackgroundDark)
+        .navigationTitle("Activity Summary")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { generateSnapshot() }
+        .task { await loadHealthData() }
+        .onChange(of: selectedPhotoItem) { _, newItem in
+            Task { await loadPhoto(newItem) }
+        }
+        .onChange(of: saveToHealth) { _, newVal in
+            UserDefaults.standard.set(newVal, forKey: "healthSyncEnabled")
+        }
     }
-
-    private func metric(_ title: String, _ value: String) -> some View {
-        VStack {
-            Text(title).foregroundColor(.taqvoAccentText).font(.caption)
-            Text(value).foregroundColor(.taqvoTextDark).font(.title3).monospacedDigit()
+    
+    // MARK: - View Components
+    
+    private var mapSection: some View {
+        Group {
+            if let img = snapshot {
+                Image(uiImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(height: 240)
+                    .clipped()
+                    .cornerRadius(16)
+            } else {
+                Rectangle()
+                    .fill(Color.black.opacity(0.2))
+                    .frame(height: 240)
+                    .overlay(
+                        VStack(spacing: 8) {
+                            ProgressView().tint(.taqvoCTA)
+                            Text("Generating map…")
+                                .font(.system(size: 14))
+                                .foregroundColor(.taqvoAccentText)
+                        }
+                    )
+                    .cornerRadius(16)
+            }
+            
+            if let photo = selectedPhoto {
+                Image(uiImage: photo)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(height: 240)
+                    .clipped()
+                    .cornerRadius(16)
+            }
+        }
+    }
+    
+    private var statsSection: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                metricCard(icon: "figure.\(summary.kind.rawValue)", label: "Type", value: summary.kind.rawValue.capitalized)
+                metricCard(icon: "location.fill", label: "Distance", value: String(format: "%.2f km", summary.distanceMeters/1000.0))
+                metricCard(icon: "clock.fill", label: "Duration", value: ActivityTrackingViewModel.formattedDuration(summary.durationSeconds))
+            }
+            
+            HStack(spacing: 12) {
+                metricCard(icon: "speedometer", label: "Pace", value: ActivityTrackingViewModel.formattedPace(distanceMeters: summary.distanceMeters, durationSeconds: summary.durationSeconds))
+                metricCard(icon: "flame.fill", label: "Calories", value: String(format: "%.0f kcal", summary.caloriesKilocalories))
+            }
+            
+            HStack(spacing: 12) {
+                metricCard(icon: "figure.walk", label: "Cadence", value: cadenceSPM.map { String(format: "%.0f spm", $0) } ?? "—")
+                metricCard(icon: "shoeprints.fill", label: "Steps", value: stepsCount.map { String($0) } ?? "—")
+                metricCard(icon: "mountain.2.fill", label: "Elevation", value: elevationGainMeters.map { String(format: "%.0f m", $0) } ?? "—")
+            }
+        }
+    }
+    
+    private var inputSection: some View {
+        VStack(spacing: 0) {
+            TextField("Title (optional)", text: $activityTitle)
+                .font(.system(size: 17))
+                .foregroundColor(.taqvoTextDark)
+                .padding(16)
+                .background(Color.black.opacity(0.2))
+            
+            Divider().background(Color.gray.opacity(0.3))
+            
+            TextField("Add a note", text: $note, axis: .vertical)
+                .font(.system(size: 17))
+                .foregroundColor(.taqvoTextDark)
+                .padding(16)
+                .background(Color.black.opacity(0.2))
+                .lineLimit(3...6)
+        }
+        .cornerRadius(12)
+    }
+    
+    private var privacySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("PRIVACY")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.taqvoAccentText)
+            
+            Picker("Privacy", selection: $selectedVisibility) {
+                ForEach(PostVisibility.allCases, id: \.self) { visibility in
+                    HStack {
+                        Image(systemName: visibility.iconName)
+                        Text(visibility.displayName)
+                    }
+                    .tag(visibility)
+                }
+            }
+            .pickerStyle(.segmented)
+            
+            Text(selectedVisibility.description)
+                .font(.system(size: 12))
+                .foregroundColor(.taqvoAccentText)
+        }
+    }
+    
+    private var photoPickerButton: some View {
+        PhotosPicker(selection: $selectedPhotoItem, matching: .images, photoLibrary: .shared()) {
+            HStack(spacing: 8) {
+                Image(systemName: "photo")
+                    .font(.system(size: 18))
+                Text(selectedPhoto == nil ? "Add a photo" : "Change photo")
+                    .font(.system(size: 16, weight: .medium))
+            }
+            .foregroundColor(.taqvoTextDark)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(Color.black.opacity(0.2))
+            .cornerRadius(12)
+        }
+    }
+    
+    private var healthSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $saveToHealth) {
+                HStack(spacing: 8) {
+                    Image(systemName: "heart.fill")
+                        .foregroundColor(.red)
+                        .font(.system(size: 18))
+                    Text("Save to Apple Health")
+                        .font(.system(size: 16))
+                        .foregroundColor(.taqvoTextDark)
+                }
+            }
+            .disabled(!health.authorized)
+            .tint(.taqvoCTA)
+            .padding(16)
+            .background(Color.black.opacity(0.2))
+            .cornerRadius(12)
+            
+            if !health.authorized {
+                Text("Enable Health access in Settings to save workouts.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.taqvoAccentText)
+            }
+            if let msg = healthSaveMessage, !msg.isEmpty {
+                Text(msg)
+                    .font(.system(size: 12))
+                    .foregroundColor(.taqvoCTA)
+            }
+        }
+    }
+    
+    private var actionButtons: some View {
+        VStack(spacing: 12) {
+            Button {
+                Task { await handleShareTap() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "paperplane.fill")
+                        .font(.system(size: 18))
+                    Text("Share to Feed")
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+                .background(Color.taqvoCTA)
+                .cornerRadius(14)
+            }
+            
+            ShareLink(item: summaryShareImageURL()) {
+                HStack(spacing: 8) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 18))
+                    Text("Share Image")
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                .foregroundColor(.taqvoTextDark)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+                .background(Color.black.opacity(0.2))
+                .cornerRadius(14)
+            }
+        }
+    }
+    
+    // MARK: - Helper Functions
+    
+    private func metricCard(icon: String, label: String, value: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 18))
+                .foregroundColor(.taqvoCTA)
+            
+            Text(value)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(.taqvoTextDark)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundColor(.taqvoAccentText)
         }
         .frame(maxWidth: .infinity)
-        .padding(8)
+        .padding(.vertical, 16)
         .background(Color.black.opacity(0.2))
         .cornerRadius(12)
+    }
+    
+    private func loadHealthData() async {
+        let ok = await health.ensureAuthorization()
+        if ok && UserDefaults.standard.object(forKey: "healthSyncEnabled") == nil {
+            saveToHealth = true
+            UserDefaults.standard.set(true, forKey: "healthSyncEnabled")
+        }
+        
+        if ok {
+            if let steps = await health.stepCount(start: summary.startDate, end: summary.endDate) {
+                stepsCount = steps
+                if cadenceSPM == nil {
+                    let minutes = max(summary.durationSeconds / 60.0, 0.001)
+                    cadenceSPM = Double(steps) / minutes
+                }
+            }
+            if let cadence = await health.averageCadenceSPM(start: summary.startDate, end: summary.endDate) {
+                cadenceSPM = cadence
+            }
+            if let elev = await health.elevationGainMeters(start: summary.startDate, end: summary.endDate) {
+                elevationGainMeters = elev
+            }
+        }
+    }
+    
+    private func loadPhoto(_ item: PhotosPickerItem?) async {
+        guard let item = item else { return }
+        do {
+            if let data: Data = try await item.loadTransferable(type: Data.self),
+               let img = UIImage(data: data) {
+                await MainActor.run { selectedPhoto = img }
+            }
+        } catch {
+            // Silently ignore photo load errors
+        }
     }
 
     private func generateSnapshot() {
@@ -344,7 +434,8 @@ struct PostRunSummaryView: View {
                   note: note.isEmpty ? nil : note,
                   photo: selectedPhoto,
                   avgHeartRateBPM: avgHR,
-                  title: passedTitle)
+                  title: passedTitle,
+                  visibility: selectedVisibility)
         dismiss()
     }
 }

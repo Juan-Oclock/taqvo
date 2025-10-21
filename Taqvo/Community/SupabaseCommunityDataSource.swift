@@ -31,16 +31,20 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
             let end_date: String
             let goal_distance_meters: Double?
             let is_public: Bool?
+            let created_by: String?
+            let created_by_username: String?
         }
         let rows: [Row]
         do {
             rows = try await get(path: "/rest/v1/challenges", queryItems: [
-                URLQueryItem(name: "select", value: "id,title,detail,start_date,end_date,goal_distance_meters,is_public"),
+                URLQueryItem(name: "select", value: "id,title,detail,start_date,end_date,goal_distance_meters,is_public,created_by,created_by_username"),
                 URLQueryItem(name: "is_public", value: "eq.true"),
                 URLQueryItem(name: "order", value: "start_date.asc")
             ])
+            print("DEBUG: loadChallenges() - Fetched \(rows.count) rows from server")
         } catch {
             // Offline or unconfigured Supabase: return empty list
+            print("DEBUG: loadChallenges() - Error fetching challenges: \(error)")
             return []
         }
         let df = DateFormatter()
@@ -60,7 +64,9 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
                 goalDistanceMeters: (r.goal_distance_meters ?? 0),
                 isJoined: false,
                 progressMeters: 0,
-                isPublic: r.is_public ?? true
+                isPublic: r.is_public ?? true,
+                createdBy: r.created_by != nil ? UUID(uuidString: r.created_by!) : nil,
+                createdByUsername: r.created_by_username
             )
         }
     }
@@ -76,8 +82,26 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
     }
 
     func setJoinState(challengeID: UUID, isJoined: Bool) async throws {
-        // POST to /rpc/set_join_state
-        _ = (challengeID, isJoined)
+        guard let userId = await authManager.userId else {
+            throw NSError(domain: "Supabase", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sign in required"])
+        }
+        
+        if isJoined {
+            // Insert into challenge_participants
+            struct EmptyResponse: Decodable {}
+            let _: EmptyResponse = try await post(path: "/rest/v1/challenge_participants", jsonBody: [
+                "challenge_id": challengeID.uuidString,
+                "user_id": userId
+            ])
+            print("DEBUG: setJoinState() - User joined challenge: \(challengeID)")
+        } else {
+            // Delete from challenge_participants
+            try await delete(path: "/rest/v1/challenge_participants", queryItems: [
+                URLQueryItem(name: "challenge_id", value: "eq.\(challengeID.uuidString)"),
+                URLQueryItem(name: "user_id", value: "eq.\(userId)")
+            ])
+            print("DEBUG: setJoinState() - User left challenge: \(challengeID)")
+        }
     }
 
     struct ContributionUpload: Codable { let day: Date; let distanceMeters: Double; let contributionCount: Int }
@@ -87,24 +111,39 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
     }
 
     func createChallenge(title: String, detail: String, startDate: Date, endDate: Date, goalDistanceMeters: Double, isPublic: Bool) async throws -> Challenge {
-        guard let userId = await authManager.userId else {
+        guard let userIdString = await authManager.userId else {
             throw NSError(domain: "Supabase", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sign in required to create a challenge"])
         }
+        guard let userId = UUID(uuidString: userIdString) else {
+            throw NSError(domain: "Supabase", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid user ID format"])
+        }
         let newId = UUID()
-        _ = userId
+        
+        // Get current user's username for display purposes
+        let username = await ProfileService.shared.currentProfile?.username ?? "Unknown User"
+        
         // Try server create
         do {
+            let df = DateFormatter()
+            df.calendar = Calendar(identifier: .iso8601)
+            df.locale = Locale(identifier: "en_US_POSIX")
+            df.dateFormat = "yyyy-MM-dd"
+            
             struct Row: Decodable { let id: String? }
             let _: Row = try await post(path: "/rest/v1/challenges", jsonBody: [
                 "id": newId.uuidString,
                 "title": title,
                 "detail": detail,
-                "start_date": ISO8601DateFormatter().string(from: startDate),
-                "end_date": ISO8601DateFormatter().string(from: endDate),
+                "start_date": df.string(from: startDate),
+                "end_date": df.string(from: endDate),
                 "goal_distance_meters": goalDistanceMeters,
-                "is_public": isPublic
+                "is_public": isPublic,
+                "created_by": userIdString,
+                "created_by_username": username
             ])
+            print("DEBUG: createChallenge() - Successfully created challenge on server: \(newId)")
         } catch {
+            print("DEBUG: createChallenge() - Error creating challenge: \(error)")
             // Offline or unconfigured Supabase: return a local challenge instance
             return Challenge(
                 id: newId,
@@ -115,7 +154,9 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
                 goalDistanceMeters: goalDistanceMeters,
                 isJoined: false,
                 progressMeters: 0,
-                isPublic: isPublic
+                isPublic: isPublic,
+                createdBy: userId,
+                createdByUsername: username
             )
         }
         // If server returned but no rows, return local instance
@@ -128,15 +169,33 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
             goalDistanceMeters: goalDistanceMeters,
             isJoined: false,
             progressMeters: 0,
-            isPublic: isPublic
+            isPublic: isPublic,
+            createdBy: userId,
+            createdByUsername: username
         )
     }
 
     func deleteChallenge(challengeID: UUID) async throws {
-        _ = challengeID
+        guard let userId = await authManager.userId else {
+            throw NSError(domain: "Supabase", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sign in required to delete a challenge"])
+        }
+        
+        // DELETE request to /rest/v1/challenges?id=eq.{challengeID}
+        // RLS policy will ensure only the creator can delete
+        do {
+            try await delete(path: "/rest/v1/challenges", queryItems: [
+                URLQueryItem(name: "id", value: "eq.\(challengeID.uuidString)")
+            ])
+            print("DEBUG: Challenge deleted successfully - ID: \(challengeID)")
+        } catch {
+            print("ERROR: Failed to delete challenge: \(error)")
+            throw error
+        }
     }
 
     func canDeleteChallenge(challengeID: UUID) async -> Bool {
+        // This is checked client-side in CommunityViewModel.canDeleteChallenge()
+        // Server-side RLS will enforce the actual permission
         true
     }
 
@@ -165,13 +224,194 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
         _ = (challengeID, usernames)
     }
 
-    // MARK: - HTTP helpers (stubs)
-    private func get<T: Decodable>(path: String, queryItems: [URLQueryItem]) async throws -> T {
-        _ = (path, queryItems)
-        throw NSError(domain: "Supabase", code: -1)
+    // MARK: - Activity Sync
+    
+    struct ActivityUpload: Codable {
+        let id: String
+        let user_id: String
+        let started_at: String
+        let ended_at: String?
+        let distance_meters: Int
+        let source: String
     }
+    
+    struct ActivityUploadResponse: Codable {
+        let id: String?
+        let user_id: String?
+        let started_at: String?
+        let ended_at: String?
+        let distance_meters: Int?
+        let source: String?
+    }
+    
+    func uploadActivity(_ activity: FeedActivity) async throws {
+        guard let userId = await authManager.userId else {
+            throw NSError(domain: "Supabase", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sign in required to upload activity"])
+        }
+        
+        let upload = ActivityUpload(
+            id: activity.id.uuidString,
+            user_id: userId,
+            started_at: ISO8601DateFormatter().string(from: activity.startDate),
+            ended_at: ISO8601DateFormatter().string(from: activity.endDate),
+            distance_meters: Int(activity.distanceMeters),
+            source: "device"
+        )
+        
+        do {
+            let _: ActivityUploadResponse = try await post(path: "/rest/v1/activities", jsonBody: [
+                "id": upload.id,
+                "user_id": upload.user_id,
+                "started_at": upload.started_at,
+                "ended_at": upload.ended_at,
+                "distance_meters": upload.distance_meters,
+                "source": upload.source
+            ])
+        } catch {
+            // If offline or server error, we'll retry later
+            throw error
+        }
+    }
+    
+    func loadUserActivities() async throws -> [ActivityUpload] {
+        guard let userId = await authManager.userId else {
+            return []
+        }
+        
+        do {
+            let activities: [ActivityUpload] = try await get(path: "/rest/v1/activities", queryItems: [
+                URLQueryItem(name: "select", value: "id,user_id,started_at,ended_at,distance_meters,source"),
+                URLQueryItem(name: "user_id", value: "eq.\(userId)"),
+                URLQueryItem(name: "order", value: "started_at.desc")
+            ])
+            return activities
+        } catch {
+            // If offline or server error, return empty list
+            return []
+        }
+    }
+
+    // MARK: - HTTP helpers
+    private func get<T: Decodable>(path: String, queryItems: [URLQueryItem]) async throws -> T {
+        var urlComponents = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+        urlComponents.queryItems = queryItems
+        
+        guard let url = urlComponents.url else {
+            throw NSError(domain: "Supabase", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        // Add Supabase headers
+        if let anonKey = Bundle.main.infoDictionary?["SUPABASE_ANON_KEY"] as? String {
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        }
+        
+        // Add auth token if available
+        if let token = await authManager.accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "Supabase", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            print("DEBUG: Supabase GET error (\(httpResponse.statusCode)): \(errorMessage)")
+            throw NSError(domain: "Supabase", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMessage])
+        }
+        
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+    
     private func post<T: Decodable>(path: String, jsonBody: [String: Any]) async throws -> T {
-        _ = (path, jsonBody)
-        throw NSError(domain: "Supabase", code: -1)
+        let url = baseURL.appendingPathComponent(path)
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("return=representation", forHTTPHeaderField: "Prefer")
+        
+        // Add Supabase headers
+        if let anonKey = Bundle.main.infoDictionary?["SUPABASE_ANON_KEY"] as? String {
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        }
+        
+        // Add auth token if available
+        if let token = await authManager.accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: jsonBody)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "Supabase", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            print("DEBUG: Supabase POST error (\(httpResponse.statusCode)): \(errorMessage)")
+            throw NSError(domain: "Supabase", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMessage])
+        }
+        
+        // Handle empty response (for inserts without return)
+        if data.isEmpty || data.count == 0 {
+            // Return a dummy empty struct if T is EmptyResponse
+            if let emptyResponse = try? JSONDecoder().decode(T.self, from: "{}".data(using: .utf8)!) {
+                return emptyResponse
+            }
+        }
+        
+        // For POST with Prefer: return=representation, Supabase returns an array
+        // We need to handle both single object and array responses
+        if let array = try? JSONDecoder().decode([T].self, from: data), let first = array.first {
+            return first
+        }
+        
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+    
+    private func delete(path: String, queryItems: [URLQueryItem]) async throws {
+        var urlComponents = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+        urlComponents.queryItems = queryItems
+        
+        guard let url = urlComponents.url else {
+            throw NSError(domain: "Supabase", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Add Supabase headers
+        if let anonKey = Bundle.main.infoDictionary?["SUPABASE_ANON_KEY"] as? String {
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        }
+        
+        // Add auth token if available
+        if let token = await authManager.accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "Supabase", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            print("DEBUG: Supabase DELETE error (\(httpResponse.statusCode)): \(errorMessage)")
+            throw NSError(domain: "Supabase", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMessage])
+        }
     }
 }

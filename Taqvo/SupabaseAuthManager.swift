@@ -21,6 +21,7 @@ final class SupabaseAuthManager: NSObject, ObservableObject {
     @Published private(set) var isAuthenticated: Bool = false
     @Published private(set) var accessToken: String?
     @Published private(set) var userId: String?
+    @Published private(set) var userEmail: String?
     @Published private(set) var tokenExpiry: Date?
     @Published private(set) var refreshToken: String?
     @Published var lastAuthError: String?
@@ -51,12 +52,14 @@ final class SupabaseAuthManager: NSObject, ObservableObject {
     func signOut() {
         accessToken = nil
         userId = nil
+        userEmail = nil
         tokenExpiry = nil
         refreshToken = nil
         isAuthenticated = false
         let d = UserDefaults.standard
         d.removeObject(forKey: "supabase_access_token")
         d.removeObject(forKey: "supabase_user_id")
+        d.removeObject(forKey: "supabase_user_email")
         d.removeObject(forKey: "supabase_token_expiry")
         d.removeObject(forKey: "supabase_refresh_token")
         NotificationCenter.default.post(name: .supabaseAuthStateChanged, object: nil)
@@ -97,6 +100,7 @@ final class SupabaseAuthManager: NSObject, ObservableObject {
             if let session = try? JSONDecoder().decode(SupabaseSessionResponse.self, from: data) {
                 self.accessToken = session.access_token
                 self.userId = session.user?.id
+                self.userEmail = session.user?.email
                 if let expiresIn = session.expires_in {
                     self.tokenExpiry = Date().addingTimeInterval(TimeInterval(expiresIn))
                 }
@@ -155,6 +159,7 @@ final class SupabaseAuthManager: NSObject, ObservableObject {
             if let session = try? JSONDecoder().decode(SupabaseSessionResponse.self, from: data) {
                 self.accessToken = session.access_token
                 self.userId = session.user?.id
+                self.userEmail = session.user?.email
                 if let expiresIn = session.expires_in {
                     self.tokenExpiry = Date().addingTimeInterval(TimeInterval(expiresIn))
                 }
@@ -188,6 +193,9 @@ final class SupabaseAuthManager: NSObject, ObservableObject {
         if let uid = d.string(forKey: "supabase_user_id"), !uid.isEmpty {
             userId = uid
         }
+        if let email = d.string(forKey: "supabase_user_email"), !email.isEmpty {
+            userEmail = email
+        }
         if let rt = d.string(forKey: "supabase_refresh_token"), !rt.isEmpty {
             refreshToken = rt
         }
@@ -201,6 +209,7 @@ final class SupabaseAuthManager: NSObject, ObservableObject {
         let d = UserDefaults.standard
         d.set(accessToken ?? "", forKey: "supabase_access_token")
         d.set(userId ?? "", forKey: "supabase_user_id")
+        d.set(userEmail ?? "", forKey: "supabase_user_email")
         d.set(tokenExpiry?.timeIntervalSince1970 ?? 0, forKey: "supabase_token_expiry")
         d.set(refreshToken ?? "", forKey: "supabase_refresh_token")
     }
@@ -277,6 +286,7 @@ extension SupabaseAuthManager {
             let session = try JSONDecoder().decode(SupabaseSessionResponse.self, from: data)
             self.accessToken = session.access_token
             self.userId = session.user?.id
+            self.userEmail = session.user?.email
             if let expiresIn = session.expires_in {
                 self.tokenExpiry = Date().addingTimeInterval(TimeInterval(expiresIn))
             }
@@ -382,6 +392,8 @@ extension SupabaseAuthManager {
             }
             let session = try JSONDecoder().decode(SupabaseSessionResponse.self, from: data)
             self.accessToken = session.access_token
+            self.userId = session.user?.id
+            self.userEmail = session.user?.email
             if let expiresIn = session.expires_in { self.tokenExpiry = Date().addingTimeInterval(TimeInterval(expiresIn)) }
             if let newRT = session.refresh_token, !newRT.isEmpty { self.refreshToken = newRT }
             self.isAuthenticated = (self.accessToken != nil)

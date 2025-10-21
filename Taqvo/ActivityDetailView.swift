@@ -77,6 +77,11 @@ struct ActivityDetailView: View {
         return result
     }
 
+    private var isOwner: Bool {
+        guard let currentUserId = SupabaseAuthManager.shared.userId else { return false }
+        return activity.userId == currentUserId
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
@@ -193,11 +198,13 @@ struct ActivityDetailView: View {
         }
         .navigationTitle(navigationTitleText)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(role: .destructive) {
-                    showDeleteConfirm = true
-                } label: {
-                    Label("Delete", systemImage: "trash")
+            if isOwner {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
                 }
             }
         }

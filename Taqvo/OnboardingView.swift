@@ -358,17 +358,25 @@ struct OnboardingView: View {
                         }
                         .disabled(appState.backgroundTrackingEnabled)
                     }
-                    Button(action: { appState.hasCompletedOnboarding = true }) {
-                        Text(appState.allRequiredPermissionsGranted ? "Continue" : "Continue (Permissions Required)")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(Color(red: 17/255, green: 17/255, blue: 17/255))
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 10)
-                            .frame(height: 39)
-                            .background(Color.taqvoCTA)
-                            .clipShape(RoundedRectangle(cornerRadius: 20))
+                    VStack(spacing: 12) {
+                        Button(action: { appState.hasCompletedOnboarding = true }) {
+                            Text(appState.allRequiredPermissionsGranted ? "Continue" : "Continue anyway")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(Color(red: 17/255, green: 17/255, blue: 17/255))
+                                .padding(.horizontal, 18)
+                                .padding(.vertical, 10)
+                                .frame(height: 39)
+                                .background(Color.taqvoCTA)
+                                .clipShape(RoundedRectangle(cornerRadius: 20))
+                        }
+                        
+                        Button(action: { appState.hasCompletedOnboarding = true }) {
+                            Text("Skip for now")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(.white)
+                                .underline()
+                        }
                     }
-                    .disabled(!appState.allRequiredPermissionsGranted)
                 }
                 .padding(.horizontal, 32)
                 .position(x: geometry.size.width / 2, y: geometry.size.height / 2)

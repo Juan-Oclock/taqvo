@@ -32,335 +32,29 @@ struct LiveActivityView: View {
     @State private var markerPhoto: UIImage? = nil
 
     var body: some View {
-        VStack(spacing: 12) {
-            if let challenge = appState.linkedChallengeTitle, !challenge.isEmpty {
-                HStack(spacing: 8) {
-                    Image(systemName: "flag.2.crossed")
-                        .foregroundColor(.taqvoCTA)
-                    Text(challenge)
-                        .font(.subheadline)
-                        .foregroundColor(.taqvoTextDark)
-                        .lineLimit(1)
-                    Spacer()
-                }
-                .padding(.horizontal, 2)
-            }
-
-            ZStack(alignment: .topTrailing) {
-                MapRouteView(route: vm.routeCoordinates, markers: vm.markers)
-                    .frame(height: mapExpanded ? 420 : 260)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-
-                HStack(spacing: 8) {
-                    Button {
-                        withAnimation { mapExpanded.toggle() }
-                    } label: {
-                        Label(mapExpanded ? "Collapse" : "Expand", systemImage: mapExpanded ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-                            .labelStyle(.iconOnly)
-                            .padding(8)
-                            .background(.ultraThinMaterial)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+        ZStack {
+            Color.taqvoBackgroundDark.ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                modernHeaderSection
+                
+                ScrollView {
+                    VStack(spacing: 20) {
+                        modernMapSection
+                        modernMetricsSection
+                        goalProgressSection
+                        expandableMetricsSection
                     }
-                    Button {
-                        showAddMarkerSheet = true
-                    } label: {
-                        Image(systemName: "mappin.and.ellipse")
-                            .padding(8)
-                            .background(.ultraThinMaterial)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
+                    .padding(.bottom, 120)
                 }
-                .padding(8)
-            }
-
-            HStack(spacing: 16) {
-                VStack(alignment: .leading) {
-                    Text("Distance")
-                        .font(.caption)
-                        .foregroundColor(.taqvoAccentText)
-                    Text(String(format: "%.2f km", vm.distanceMeters / 1000.0))
-                        .font(.title3).bold()
-                }
+                
                 Spacer()
-                VStack(alignment: .center) {
-                    Text("Pace")
-                        .font(.caption)
-                        .foregroundColor(.taqvoAccentText)
-                    Text(ActivityTrackingViewModel.formattedPace(distanceMeters: vm.distanceMeters, durationSeconds: vm.durationSeconds))
-                        .font(.title3).bold()
-                }
-                Spacer()
-                VStack(alignment: .trailing) {
-                    Text("Duration")
-                        .font(.caption)
-                        .foregroundColor(.taqvoAccentText)
-                    Text(timeString(vm.durationSeconds))
-                        .font(.title3).bold()
-                }
-            }
-
-            if vm.timeGoalSeconds != nil || vm.distanceGoalMeters != nil {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Goal")
-                            .font(.caption)
-                            .foregroundColor(.taqvoAccentText)
-                        Spacer()
-                        Text(vm.goalProgressText())
-                            .font(.caption)
-                            .foregroundColor(.taqvoAccentText)
-                            .lineLimit(1)
-                    }
-                    ProgressView(value: vm.goalProgressFraction())
-                        .tint(.taqvoCTA)
-                    HStack {
-                        Text("Remaining")
-                            .font(.caption)
-                            .foregroundColor(.taqvoAccentText)
-                        Spacer()
-                        Text(vm.goalRemainingEstimateText())
-                            .font(.caption)
-                            .foregroundColor(.taqvoAccentText)
-                            .lineLimit(1)
-                    }
-                    if vm.distanceGoalMeters != nil {
-                        HStack {
-                            Text("Est. Finish")
-                                .font(.caption)
-                                .foregroundColor(.taqvoAccentText)
-                            Spacer()
-                            Text(vm.goalEstimatedFinishTimeText())
-                                .font(.caption)
-                                .foregroundColor(.taqvoAccentText)
-                                .lineLimit(1)
-                        }
-                    }
-                }
-                .padding(.vertical, 4)
-            }
-
-            // Music controls
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("Music")
-                        .font(.caption)
-                        .foregroundColor(.taqvoAccentText)
-                    Spacer()
-                    if provider == .spotify, spotifyVM.isAuthorized {
-                        Text("\(spotifyVM.currentTitle)\(spotifyVM.currentArtist.isEmpty ? "" : " • \(spotifyVM.currentArtist)")")
-                            .font(.caption)
-                            .foregroundColor(.taqvoAccentText)
-                            .lineLimit(1)
-                    } else if provider == .apple, musicVM.isAuthorized {
-                        Text("\(musicVM.currentTitle)\(musicVM.currentArtist.isEmpty ? "" : " • \(musicVM.currentArtist)")")
-                            .font(.caption)
-                            .foregroundColor(.taqvoAccentText)
-                            .lineLimit(1)
-                    }
-                }
-
-
-                if provider == .spotify {
-                    if spotifyVM.isAuthorized {
-                        HStack(spacing: 8) {
-                            Button {
-                                Task { await spotifyVM.togglePlayPause() }
-                            } label: {
-                                Image(systemName: spotifyVM.isPlaying ? "pause.fill" : "play.fill")
-                                    .foregroundColor(.taqvoTextLight)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .background(Color.taqvoCTA)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                            Button {
-                                Task { await spotifyVM.stopPlayback() }
-                            } label: {
-                                Image(systemName: "stop.fill")
-                                    .foregroundColor(.taqvoTextLight)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .background(Color.taqvoCTA)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                            Button {
-                                showSpotifyPicker = true
-                            } label: {
-                                Text("Playlist")
-                                    .foregroundColor(.taqvoTextLight)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .background(Color.taqvoCTA.opacity(0.8))
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                        }
-                    } else {
-                        Button {
-                            spotifyVM.connect()
-                        } label: {
-                            Text("Connect Spotify")
-                                .foregroundColor(.taqvoTextLight)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(Color.taqvoCTA)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                        }
-                    }
-                } else {
-                    if musicVM.isAuthorized {
-                        HStack(spacing: 8) {
-                            Button {
-                                musicVM.togglePlayPause()
-                            } label: {
-                                Image(systemName: musicVM.isPlaying ? "pause.fill" : "play.fill")
-                                    .foregroundColor(.taqvoTextLight)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .background(Color.taqvoCTA)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                            Button {
-                                musicVM.stopPlayback()
-                            } label: {
-                                Image(systemName: "stop.fill")
-                                    .foregroundColor(.taqvoTextLight)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .background(Color.taqvoCTA)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                            Button {
-                                showPlaylistPicker = true
-                            } label: {
-                                Text("Playlist")
-                                    .foregroundColor(.taqvoTextLight)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .background(Color.taqvoCTA.opacity(0.8))
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                        }
-                    } else {
-                        Button {
-                            musicVM.requestAuthorization()
-                        } label: {
-                            Text("Connect Apple Music")
-                                .foregroundColor(.taqvoTextLight)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(Color.taqvoCTA.opacity(0.85))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                        }
-                    }
-                }
-            }
-
-            HStack(spacing: 12) {
-                if vm.isRunning {
-                    Button {
-                        vm.pause()
-                    } label: {
-                        Text("Pause")
-                            .foregroundColor(.taqvoTextLight)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.orange)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                } else if vm.hasSession {
-                    Button {
-                        vm.resume()
-                    } label: {
-                        Text("Resume")
-                            .foregroundColor(.taqvoTextLight)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.green)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                }
-
-                Button {
-                    // Build summary first, then present sheet to avoid blank content
-                    summary = vm.summary()
-                    vm.stop()
-                    if autoStopMusicOnEnd {
-                        if provider == .spotify {
-                            Task { await spotifyVM.stopPlayback() }
-                        } else {
-                            musicVM.stopPlayback()
-                        }
-                    }
-                    showSummary = true
-                } label: {
-                    Text("Stop")
-                        .foregroundColor(.taqvoTextDark)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.red)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                .disabled(!vm.hasSession)
+                
+                modernControlsSection
             }
         }
-        .padding()
-        .navigationTitle(appState.linkedChallengeTitle ?? "Live Activity")
-        .safeAreaInset(edge: .bottom) {
-        VStack(spacing: 8) {
-        Capsule()
-        .fill(Color.taqvoAccentText.opacity(0.4))
-        .frame(width: 40, height: 5)
-        .padding(.top, 6)
-        .onTapGesture { withAnimation { showMetricsPanel.toggle() } }
-        if showMetricsPanel {
-        HStack(spacing: 16) {
-        VStack(alignment: .leading) {
-        Text("Cadence")
-        .font(.caption)
-        .foregroundColor(.taqvoAccentText)
-        Text(vm.currentCadenceSPM.map { String(format: "%.0f spm", $0) } ?? "—")
-        .font(.title3).bold()
-        }
-        Spacer()
-        VStack(alignment: .center) {
-        Text("Steps")
-        .font(.caption)
-        .foregroundColor(.taqvoAccentText)
-        Text(String(vm.totalSteps))
-        .font(.title3).bold()
-        }
-        Spacer()
-        VStack(alignment: .trailing) {
-        Text("Elevation")
-        .font(.caption)
-        .foregroundColor(.taqvoAccentText)
-        Text(String(format: "%.0f m", max(0, vm.elevationGainMeters)))
-        .font(.title3).bold()
-        }
-        }
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else {
-        Text("Swipe up for cadence, steps & elevation")
-        .font(.caption)
-        .foregroundColor(.taqvoAccentText)
-        .transition(.opacity)
-        }
-        }
-        .padding(.horizontal)
-        .padding(.bottom, 8)
-        .background(.ultraThinMaterial)
-        .contentShape(Rectangle())
-        .gesture(
-        DragGesture(minimumDistance: 8)
-        .onEnded { value in
-        if value.translation.height < 0 { withAnimation { showMetricsPanel = true } }
-        else if value.translation.height > 0 { withAnimation { showMetricsPanel = false } }
-        }
-        )
-        }
+        .navigationBarHidden(true)
         .sheet(isPresented: $showSummary, onDismiss: {
-            appState.linkedChallengeTitle = nil
-            appState.linkedChallengeIsPublic = nil
             dismiss()
         }) {
             PostRunSummaryView(summary: (summary ?? vm.summary()).withChallenge(title: appState.linkedChallengeTitle, isPublic: appState.linkedChallengeIsPublic))
@@ -372,44 +66,7 @@ struct LiveActivityView: View {
             SpotifyPlaylistPickerView(spotifyVM: spotifyVM)
         }
         .sheet(isPresented: $showAddMarkerSheet) {
-            NavigationView {
-                Form {
-                    Section(header: Text("Note")) {
-                        TextField("Optional note", text: $markerNote)
-                    }
-                    Section(header: Text("Photo")) {
-                        PhotosPicker(selection: $markerPhotoItem, matching: .images) {
-                            HStack {
-                                Image(systemName: "photo")
-                                Text(markerPhoto == nil ? "Choose Photo" : "Change Photo")
-                            }
-                        }
-                        if let img = markerPhoto {
-                            Image(uiImage: img)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxHeight: 180)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                        }
-                    }
-                }
-                .navigationTitle("Add Marker")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { showAddMarkerSheet = false }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") {
-                            vm.addMarker(note: markerNote, photo: markerPhoto)
-                            markerNote = ""
-                            markerPhoto = nil
-                            markerPhotoItem = nil
-                            showAddMarkerSheet = false
-                        }
-                        .disabled(!vm.hasSession)
-                    }
-                }
-            }
+            addMarkerSheet
         }
         .onChange(of: markerPhotoItem) { _, item in
             guard let item = item else { return }
@@ -420,32 +77,7 @@ struct LiveActivityView: View {
             }
         }
         .onAppear {
-            if !vm.isRunning && !vm.hasSession {
-                vm.start()
-            }
-            if musicVM.isAuthorized {
-                musicVM.startObserving()
-                musicVM.loadPlaylists()
-            }
-            Task {
-                if spotifyVM.isAuthorized {
-                    await spotifyVM.refreshState()
-                }
-                await MainActor.run {
-                    var chosen = MusicProvider(rawValue: storedProviderString) ?? .spotify
-                    if musicVM.isAuthorized && musicVM.isPlaying {
-                        chosen = .apple
-                    } else if spotifyVM.isAuthorized && spotifyVM.isPlaying {
-                        chosen = .spotify
-                    } else if chosen == .spotify && !spotifyVM.isAuthorized && musicVM.isAuthorized {
-                        chosen = .apple
-                    } else if chosen == .apple && !musicVM.isAuthorized && spotifyVM.isAuthorized {
-                        chosen = .spotify
-                    }
-                    provider = chosen
-                    storedProviderString = chosen.rawValue
-                }
-            }
+            setupOnAppear()
         }
         .onChange(of: musicVM.isPlaying) { _, playing in
             if playing {
@@ -460,35 +92,11 @@ struct LiveActivityView: View {
             }
         }
         .onChange(of: vm.goalReached) { _, reached in
-            if reached {
-                if vm.autoEndOnGoal {
-                    summary = vm.summary()
-                    vm.stop()
-                    if autoStopMusicOnEnd {
-                        if provider == .spotify {
-                            Task { await spotifyVM.stopPlayback() }
-                        } else {
-                            musicVM.stopPlayback()
-                        }
-                    }
-                    showSummary = true
-                } else {
-                    showGoalAlert = true
-                }
-            }
+            handleGoalReached(reached)
         }
         .alert("Goal reached", isPresented: $showGoalAlert) {
             Button("End Activity", role: .destructive) {
-                summary = vm.summary().withChallenge(title: appState.linkedChallengeTitle, isPublic: appState.linkedChallengeIsPublic)
-                vm.stop()
-                if autoStopMusicOnEnd {
-                    if provider == .spotify {
-                        Task { await spotifyVM.stopPlayback() }
-                    } else {
-                        musicVM.stopPlayback()
-                    }
-                }
-                showSummary = true
+                endActivity()
             }
             Button("Continue", role: .cancel) {
                 showGoalAlert = false
@@ -501,7 +109,610 @@ struct LiveActivityView: View {
             appState.linkedChallengeIsPublic = nil
         }
     }
+    
+    // MARK: - Modern View Components
+    
+    private var modernHeaderSection: some View {
+        HStack {
+            Button {
+                dismiss()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("Back")
+                        .font(.system(size: 17))
+                }
+                .foregroundColor(.taqvoCTA)
+            }
+            
+            Spacer()
+            
+            Text("Live Activity")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.taqvoTextDark)
+            
+            Spacer()
+            
+            // Invisible spacer
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.left")
+                Text("Back")
+            }
+            .opacity(0)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+    }
+    
+    @ViewBuilder
+    private var challengeSection: some View {
+        if let challenge = appState.linkedChallengeTitle, !challenge.isEmpty {
+            HStack(spacing: 12) {
+                Image(systemName: "flag.2.crossed")
+                    .foregroundColor(.taqvoCTA)
+                    .font(.system(size: 16))
+                Text(challenge)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white.opacity(0.8))
+                    .lineLimit(1)
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+        }
+    }
+    
+    private var modernMapSection: some View {
+        ZStack(alignment: .topTrailing) {
+            MapRouteView(route: vm.routeCoordinates, markers: vm.markers)
+                .frame(height: 300)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
 
+            HStack(spacing: 12) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.3)) { mapExpanded.toggle() }
+                } label: {
+                    Image(systemName: mapExpanded ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(width: 36, height: 36)
+                        .background(Color.black.opacity(0.7))
+                        .clipShape(Circle())
+                }
+                Button {
+                    showAddMarkerSheet = true
+                } label: {
+                    Image(systemName: "mappin.and.ellipse")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(width: 36, height: 36)
+                        .background(Color.black.opacity(0.7))
+                        .clipShape(Circle())
+                }
+            }
+            .padding(12)
+        }
+        .padding(.horizontal, 16)
+    }
+    
+    private var modernMetricsSection: some View {
+        VStack(spacing: 12) {
+            // Main metric - Distance (large)
+            VStack(spacing: 4) {
+                Text("Distance")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.taqvoAccentText)
+                Text(String(format: "%.2f", vm.distanceMeters / 1000.0))
+                    .font(.system(size: 56, weight: .bold))
+                    .foregroundColor(.taqvoTextDark)
+                Text("km")
+                    .font(.system(size: 16))
+                    .foregroundColor(.taqvoAccentText)
+            }
+            .padding(.vertical, 20)
+            
+            // Secondary metrics
+            HStack(spacing: 12) {
+                modernMetricCard(
+                    label: "Pace",
+                    value: ActivityTrackingViewModel.formattedPace(distanceMeters: vm.distanceMeters, durationSeconds: vm.durationSeconds),
+                    icon: "speedometer"
+                )
+                
+                modernMetricCard(
+                    label: "Duration",
+                    value: timeString(vm.durationSeconds),
+                    icon: "clock.fill"
+                )
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+    
+    private func modernMetricCard(label: String, value: String, icon: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 20))
+                .foregroundColor(.taqvoCTA)
+            
+            Text(value)
+                .font(.system(size: 24, weight: .bold))
+                .foregroundColor(.taqvoTextDark)
+            
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundColor(.taqvoAccentText)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(16)
+    }
+    
+    @ViewBuilder
+    private var goalProgressSection: some View {
+        if vm.timeGoalSeconds != nil || vm.distanceGoalMeters != nil {
+            VStack(spacing: 16) {
+                HStack {
+                    Text("Goal Progress")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white.opacity(0.7))
+                    Spacer()
+                    Text(vm.goalProgressText())
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white.opacity(0.8))
+                        .lineLimit(1)
+                }
+                
+                ProgressView(value: vm.goalProgressFraction())
+                    .tint(.taqvoCTA)
+                    .scaleEffect(y: 1.5)
+                
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Remaining")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.6))
+                        Text(vm.goalRemainingEstimateText())
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                    }
+                    
+                    Spacer()
+                    
+                    if vm.distanceGoalMeters != nil {
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("Est. Finish")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.white.opacity(0.6))
+                            Text(vm.goalEstimatedFinishTimeText())
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+            }
+            .padding(20)
+            .background(Color.white.opacity(0.05))
+            .cornerRadius(16)
+            .padding(.horizontal, 24)
+        }
+    }
+    
+    private var musicControlsSection: some View {
+        VStack(spacing: 16) {
+            musicHeaderSection
+            musicProviderButtons
+            musicPlaybackControls
+        }
+        .padding(20)
+        .background(Color.white.opacity(0.05))
+        .cornerRadius(16)
+        .padding(.horizontal, 24)
+    }
+    
+    private var musicHeaderSection: some View {
+        HStack {
+            Text("Music")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.white.opacity(0.7))
+            Spacer()
+            currentTrackInfo
+        }
+    }
+    
+    @ViewBuilder
+    private var currentTrackInfo: some View {
+        if provider == .spotify, spotifyVM.isAuthorized {
+            Text("\(spotifyVM.currentTitle)\(spotifyVM.currentArtist.isEmpty ? "" : " • \(spotifyVM.currentArtist)")")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.white.opacity(0.8))
+                .lineLimit(1)
+        } else if provider == .apple, musicVM.isAuthorized {
+            Text("\(musicVM.currentTitle)\(musicVM.currentArtist.isEmpty ? "" : " • \(musicVM.currentArtist)")")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.white.opacity(0.8))
+                .lineLimit(1)
+        }
+    }
+    
+    private var musicProviderButtons: some View {
+        HStack(spacing: 12) {
+            spotifyProviderButton
+            appleMusicProviderButton
+        }
+    }
+    
+    private var spotifyProviderButton: some View {
+        Button(action: {
+            if provider == .spotify {
+                if spotifyVM.isAuthorized {
+                    showSpotifyPicker = true
+                } else {
+                    spotifyVM.connect()
+                }
+            } else {
+                provider = .spotify
+            }
+        }) {
+            HStack(spacing: 6) {
+                Image(systemName: "music.note")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(provider == .spotify ? .green : .white.opacity(0.7))
+                Text(provider == .spotify ? (spotifyVM.isAuthorized ? "Spotify" : "Connect Spotify") : "Connect Spotify")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(provider == .spotify ? .green : .white.opacity(0.7))
+                    .underline(provider == .spotify)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+        }
+    }
+    
+    private var appleMusicProviderButton: some View {
+        Button(action: {
+            if provider == .apple {
+                if musicVM.isAuthorized {
+                    showPlaylistPicker = true
+                } else {
+                    musicVM.requestAuthorization()
+                }
+            } else {
+                provider = .apple
+            }
+        }) {
+            HStack(spacing: 6) {
+                Image(systemName: "music.note")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(provider == .apple ? .orange : .white.opacity(0.7))
+                Text(provider == .apple ? (musicVM.isAuthorized ? "Apple Music" : "Connect Apple Music") : "Connect Apple Music")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(provider == .apple ? .orange : .white.opacity(0.7))
+                    .underline(provider == .apple)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+        }
+    }
+    
+    @ViewBuilder
+    private var musicPlaybackControls: some View {
+        if provider == .spotify {
+            if spotifyVM.isAuthorized {
+                spotifyPlaybackControls
+            }
+        } else {
+            if musicVM.isAuthorized {
+                appleMusicPlaybackControls
+            }
+        }
+    }
+    
+    private var spotifyPlaybackControls: some View {
+        HStack(spacing: 8) {
+            Button {
+                Task { await spotifyVM.togglePlayPause() }
+            } label: {
+                Image(systemName: spotifyVM.isPlaying ? "pause.fill" : "play.fill")
+                    .foregroundColor(.taqvoTextLight)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.taqvoCTA)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            Button {
+                Task { await spotifyVM.stopPlayback() }
+            } label: {
+                Image(systemName: "stop.fill")
+                    .foregroundColor(.taqvoTextLight)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.taqvoCTA)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
+    }
+    
+    private var appleMusicPlaybackControls: some View {
+        HStack(spacing: 8) {
+            Button {
+                musicVM.togglePlayPause()
+            } label: {
+                Image(systemName: musicVM.isPlaying ? "pause.fill" : "play.fill")
+                    .foregroundColor(.taqvoTextLight)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.taqvoCTA)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            Button {
+                musicVM.stopPlayback()
+            } label: {
+                Image(systemName: "stop.fill")
+                    .foregroundColor(.taqvoTextLight)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.taqvoCTA)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
+    }
+    
+    private var modernControlsSection: some View {
+        VStack(spacing: 0) {
+            Divider()
+                .background(Color.gray.opacity(0.3))
+            
+            HStack(spacing: 12) {
+                if vm.isRunning {
+                    Button(action: {
+                        vm.pause()
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "pause.fill")
+                                .font(.system(size: 18))
+                            Text("Pause")
+                                .font(.system(size: 17, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 18)
+                        .background(Color.orange)
+                        .cornerRadius(14)
+                    }
+                } else if vm.hasSession {
+                    Button(action: {
+                        vm.resume()
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 18))
+                            Text("Resume")
+                                .font(.system(size: 17, weight: .semibold))
+                        }
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 18)
+                        .background(Color.taqvoCTA)
+                        .cornerRadius(14)
+                    }
+                }
+                
+                Button(action: {
+                    summary = vm.summary()
+                    vm.stop()
+                    if autoStopMusicOnEnd {
+                        if provider == .spotify {
+                            Task { await spotifyVM.stopPlayback() }
+                        } else {
+                            musicVM.stopPlayback()
+                        }
+                    }
+                    showSummary = true
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 18))
+                        Text("Stop")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                    .background(Color.red)
+                    .cornerRadius(14)
+                }
+                .disabled(!vm.hasSession)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+            .background(Color.taqvoBackgroundDark)
+        }
+    }
+
+    private var expandableMetricsSection: some View {
+        VStack(spacing: 12) {
+            Button(action: {
+                withAnimation(.spring(response: 0.3)) {
+                    showMetricsPanel.toggle()
+                }
+            }) {
+                HStack {
+                    Text("More Metrics")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.taqvoTextDark)
+                    Spacer()
+                    Image(systemName: showMetricsPanel ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.taqvoCTA)
+                }
+                .padding(16)
+                .background(Color.black.opacity(0.2))
+                .cornerRadius(12)
+            }
+            
+            if showMetricsPanel {
+                HStack(spacing: 12) {
+                    VStack(spacing: 8) {
+                        Image(systemName: "figure.walk")
+                            .font(.system(size: 18))
+                            .foregroundColor(.taqvoCTA)
+                        Text(vm.currentCadenceSPM.map { String(format: "%.0f", $0) } ?? "—")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.taqvoTextDark)
+                        Text("spm")
+                            .font(.system(size: 11))
+                            .foregroundColor(.taqvoAccentText)
+                        Text("Cadence")
+                            .font(.system(size: 11))
+                            .foregroundColor(.taqvoAccentText)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color.black.opacity(0.2))
+                    .cornerRadius(12)
+                    
+                    VStack(spacing: 8) {
+                        Image(systemName: "shoeprints.fill")
+                            .font(.system(size: 18))
+                            .foregroundColor(.taqvoCTA)
+                        Text(String(vm.totalSteps))
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.taqvoTextDark)
+                        Text("")
+                            .font(.system(size: 11))
+                        Text("Steps")
+                            .font(.system(size: 11))
+                            .foregroundColor(.taqvoAccentText)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color.black.opacity(0.2))
+                    .cornerRadius(12)
+                    
+                    VStack(spacing: 8) {
+                        Image(systemName: "mountain.2.fill")
+                            .font(.system(size: 18))
+                            .foregroundColor(.taqvoCTA)
+                        Text(String(format: "%.0f", max(0, vm.elevationGainMeters)))
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.taqvoTextDark)
+                        Text("m")
+                            .font(.system(size: 11))
+                            .foregroundColor(.taqvoAccentText)
+                        Text("Elevation")
+                            .font(.system(size: 11))
+                            .foregroundColor(.taqvoAccentText)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color.black.opacity(0.2))
+                    .cornerRadius(12)
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+    
+    private var addMarkerSheet: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Note")) {
+                    TextField("Optional note", text: $markerNote)
+                }
+                Section(header: Text("Photo")) {
+                    PhotosPicker(selection: $markerPhotoItem, matching: .images) {
+                        HStack {
+                            Image(systemName: "photo")
+                            Text(markerPhoto == nil ? "Choose Photo" : "Change Photo")
+                        }
+                    }
+                    if let img = markerPhoto {
+                        Image(uiImage: img)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxHeight: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+            }
+            .navigationTitle("Add Marker")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showAddMarkerSheet = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        vm.addMarker(note: markerNote, photo: markerPhoto)
+                        markerNote = ""
+                        markerPhoto = nil
+                        markerPhotoItem = nil
+                        showAddMarkerSheet = false
+                    }
+                    .disabled(!vm.hasSession)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func setupOnAppear() {
+        if !vm.isRunning && !vm.hasSession {
+            vm.start()
+        }
+        if musicVM.isAuthorized {
+            musicVM.startObserving()
+            musicVM.loadPlaylists()
+        }
+        Task {
+            if spotifyVM.isAuthorized {
+                await spotifyVM.refreshState()
+            }
+            await MainActor.run {
+                var chosen = MusicProvider(rawValue: storedProviderString) ?? .spotify
+                if musicVM.isAuthorized && musicVM.isPlaying {
+                    chosen = .apple
+                } else if spotifyVM.isAuthorized && spotifyVM.isPlaying {
+                    chosen = .spotify
+                } else if chosen == .spotify && !spotifyVM.isAuthorized && musicVM.isAuthorized {
+                    chosen = .apple
+                } else if chosen == .apple && !musicVM.isAuthorized && spotifyVM.isAuthorized {
+                    chosen = .spotify
+                }
+                provider = chosen
+                storedProviderString = chosen.rawValue
+            }
+        }
+    }
+    
+    private func handleGoalReached(_ reached: Bool) {
+        if reached {
+            if vm.autoEndOnGoal {
+                endActivity()
+            } else {
+                showGoalAlert = true
+            }
+        }
+    }
+    
+    private func endActivity() {
+        summary = vm.summary().withChallenge(title: appState.linkedChallengeTitle, isPublic: appState.linkedChallengeIsPublic)
+        vm.stop()
+        if autoStopMusicOnEnd {
+            if provider == .spotify {
+                Task { await spotifyVM.stopPlayback() }
+            } else {
+                musicVM.stopPlayback()
+            }
+        }
+        showSummary = true
+    }
+    
     private func timeString(_ seconds: Double) -> String {
         let s = Int(seconds)
         let h = s / 3600
@@ -509,6 +720,27 @@ struct LiveActivityView: View {
         let sec = s % 60
         if h > 0 { return String(format: "%d:%02d:%02d", h, m, sec) }
         return String(format: "%02d:%02d", m, sec)
+    }
+}
+
+// MARK: - View Extensions
+extension View {
+    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
+        clipShape(RoundedCorner(radius: radius, corners: corners))
+    }
+}
+
+struct RoundedCorner: Shape {
+    var radius: CGFloat = .infinity
+    var corners: UIRectCorner = .allCorners
+
+    func path(in rect: CGRect) -> Path {
+        let path = UIBezierPath(
+            roundedRect: rect,
+            byRoundingCorners: corners,
+            cornerRadii: CGSize(width: radius, height: radius)
+        )
+        return Path(path.cgPath)
     }
 }
 

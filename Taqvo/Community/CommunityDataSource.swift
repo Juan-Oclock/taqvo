@@ -21,9 +21,10 @@ protocol CommunityDataSource {
 
 final class MockCommunityDataSource: CommunityDataSource {
     func loadChallenges() async throws -> [Challenge] {
-        [
-            Challenge(id: UUID(), title: "City Marathon", detail: "Run across the city.", startDate: Date(), endDate: Calendar.current.date(byAdding: .day, value: 30, to: Date())!, goalDistanceMeters: 42195, isJoined: false, progressMeters: 0, isPublic: true),
-            Challenge(id: UUID(), title: "Trail Trek", detail: "Explore mountain trails.", startDate: Date(), endDate: Calendar.current.date(byAdding: .day, value: 45, to: Date())!, goalDistanceMeters: 100000, isJoined: true, progressMeters: 25000, isPublic: false)
+        let currentUserId = await SupabaseAuthManager.shared.userId.flatMap { UUID(uuidString: $0) }
+        return [
+            Challenge(id: UUID(), title: "City Marathon", detail: "Run across the city.", startDate: Date(), endDate: Calendar.current.date(byAdding: .day, value: 30, to: Date())!, goalDistanceMeters: 42195, isJoined: false, progressMeters: 0, isPublic: true, createdBy: currentUserId, createdByUsername: "You"),
+            Challenge(id: UUID(), title: "Trail Trek", detail: "Explore mountain trails.", startDate: Date(), endDate: Calendar.current.date(byAdding: .day, value: 45, to: Date())!, goalDistanceMeters: 100000, isJoined: true, progressMeters: 25000, isPublic: false, createdBy: UUID(), createdByUsername: "Alice")
         ]
     }
 
@@ -40,7 +41,9 @@ final class MockCommunityDataSource: CommunityDataSource {
     func uploadDailyContributions(challengeID: UUID, items: [SupabaseCommunityDataSource.ContributionUpload]) async throws { _ = (challengeID, items) }
 
     func createChallenge(title: String, detail: String, startDate: Date, endDate: Date, goalDistanceMeters: Double, isPublic: Bool) async throws -> Challenge {
-        Challenge(
+        let currentUserId = await SupabaseAuthManager.shared.userId.flatMap { UUID(uuidString: $0) }
+        let username = await ProfileService.shared.currentProfile?.username ?? "Unknown User"
+        return Challenge(
             id: UUID(),
             title: title,
             detail: detail,
@@ -49,7 +52,9 @@ final class MockCommunityDataSource: CommunityDataSource {
             goalDistanceMeters: goalDistanceMeters,
             isJoined: false,
             progressMeters: 0,
-            isPublic: isPublic
+            isPublic: isPublic,
+            createdBy: currentUserId,
+            createdByUsername: username
         )
     }
 

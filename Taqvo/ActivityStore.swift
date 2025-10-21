@@ -50,6 +50,18 @@ struct ActivityComment: Identifiable, Codable, Hashable {
     let author: String
     let text: String
     let date: Date
+    let authorUsername: String?
+    let authorProfileImageBase64: String?
+    
+    // Convenience initializer for backward compatibility
+    init(id: UUID, author: String, text: String, date: Date, authorUsername: String? = nil, authorProfileImageBase64: String? = nil) {
+        self.id = id
+        self.author = author
+        self.text = text
+        self.date = date
+        self.authorUsername = authorUsername
+        self.authorProfileImageBase64 = authorProfileImageBase64
+    }
 }
 
 struct FeedActivity: Identifiable, Codable, Hashable {
@@ -358,18 +370,68 @@ final class ActivityStore: ObservableObject {
     }
 
     @MainActor
-    func addComment(activityID: UUID, text: String, author: String? = nil) {
+    func addComment(activityID: UUID, text: String, author: String? = nil, authorUsername: String? = nil, authorProfileImageBase64: String? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         guard let idx = activities.firstIndex(where: { $0.id == activityID }) else { return }
         var a = activities[idx]
         
-        // Use provided author, or fall back to user email, or "You" as last resort
-        let commentAuthor = author ?? SupabaseAuthManager.shared.userEmail ?? "You"
+        // Get current user's email as the primary identifier
+        let currentUserEmail = SupabaseAuthManager.shared.userEmail ?? "You"
+        let commentAuthor = author ?? currentUserEmail
         
-        let comment = ActivityComment(id: UUID(), author: commentAuthor, text: trimmed, date: Date())
+        // Get current user's profile info from ProfileService
+        let profileService = ProfileService.shared
+        print("DEBUG: Current profile in addComment: \(String(describing: profileService.currentProfile))")
+        print("DEBUG: Current profile username: \(String(describing: profileService.currentProfile?.username))")
+        print("DEBUG: Current profile avatarUrl: \(String(describing: profileService.currentProfile?.avatarUrl))")
+        
+        // For username: use provided value, or profile username, or nil (don't fallback to email)
+        let finalUsername: String?
+        if let providedUsername = authorUsername {
+            finalUsername = providedUsername
+        } else if let profileUsername = profileService.currentProfile?.username, !profileUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            finalUsername = profileUsername
+        } else {
+            // Don't store email in authorUsername - let CommentRowView handle the fallback
+            finalUsername = nil
+        }
+        
+        // For profile image: use provided value or profile avatar
+        let finalProfileImage = authorProfileImageBase64 ?? profileService.currentProfile?.avatarUrl
+        
+        print("DEBUG: Final username for comment: \(String(describing: finalUsername))")
+        print("DEBUG: Final profile image for comment: \(String(describing: finalProfileImage))")
+        
+        let comment = ActivityComment(
+            id: UUID(),
+            author: commentAuthor,
+            text: trimmed,
+            date: Date(),
+            authorUsername: finalUsername,
+            authorProfileImageBase64: finalProfileImage
+        )
         a.comments.append(comment)
         activities[idx] = a
+        save()
+    }
+    
+    @MainActor
+    func deleteComment(activityID: UUID, commentID: UUID) {
+        guard let activityIdx = activities.firstIndex(where: { $0.id == activityID }) else { return }
+        var activity = activities[activityIdx]
+        
+        // Find the comment to delete
+        guard let commentIdx = activity.comments.firstIndex(where: { $0.id == commentID }) else { return }
+        let comment = activity.comments[commentIdx]
+        
+        // Check if current user is the author of the comment
+        let currentUserEmail = SupabaseAuthManager.shared.userEmail ?? "You"
+        guard comment.author == currentUserEmail else { return }
+        
+        // Remove the comment
+        activity.comments.remove(at: commentIdx)
+        activities[activityIdx] = activity
         save()
     }
 }

@@ -40,6 +40,18 @@ struct ChallengeDetailView: View {
                     Text(currentChallenge.detail)
                         .foregroundColor(.taqvoAccentText)
 
+                    // Show challenge creator
+                    if let createdByUsername = currentChallenge.createdByUsername {
+                        HStack {
+                            Image(systemName: "person.circle")
+                                .foregroundColor(.taqvoAccentText)
+                            Text("Created by \(createdByUsername)")
+                                .font(.caption)
+                                .foregroundColor(.taqvoAccentText)
+                            Spacer()
+                        }
+                    }
+
                     HStack {
                         Text(dateRangeText)
                             .font(.caption)
@@ -117,7 +129,7 @@ struct ChallengeDetailView: View {
             }
         }
         .task {
-            canDelete = await community.canDelete(challengeID: challenge.id)
+            canDelete = community.canDeleteChallenge(challenge)
         }
         .onAppear {
             community.refreshProgress(from: store)

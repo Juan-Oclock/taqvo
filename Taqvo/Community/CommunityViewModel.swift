@@ -11,6 +11,8 @@ struct Challenge: Identifiable, Hashable {
     var isJoined: Bool
     var progressMeters: Double
     var isPublic: Bool
+    var createdBy: UUID?
+    var createdByUsername: String?
 
     var durationDays: Int {
         Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
@@ -21,9 +23,9 @@ struct Challenge: Identifiable, Hashable {
         return min(progressMeters / goalDistanceMeters, 1)
     }
 
-    static func demo(start: Date, days: Int, title: String, detail: String, goalKm: Double, isPublic: Bool = true) -> Challenge {
+    static func demo(start: Date, days: Int, title: String, detail: String, goalKm: Double, isPublic: Bool = true, createdBy: UUID? = nil, createdByUsername: String? = nil) -> Challenge {
         let end = Calendar.current.date(byAdding: .day, value: days, to: start) ?? start
-        return Challenge(id: UUID(), title: title, detail: detail, startDate: start, endDate: end, goalDistanceMeters: goalKm * 1000, isJoined: false, progressMeters: 0, isPublic: isPublic)
+        return Challenge(id: UUID(), title: title, detail: detail, startDate: start, endDate: end, goalDistanceMeters: goalKm * 1000, isJoined: false, progressMeters: 0, isPublic: isPublic, createdBy: createdBy, createdByUsername: createdByUsername)
     }
 }
 
@@ -58,27 +60,63 @@ final class CommunityViewModel: ObservableObject {
     @Published var clubs: [Club] = []
 
     private let dataSource: CommunityDataSource
-    private let joinStatesKey = "community_join_states"
-    private let clubJoinStatesKey = "community_club_join_states"
-    private func loadJoinStates() -> [String: Bool] {
-        (UserDefaults.standard.dictionary(forKey: joinStatesKey) as? [String: Bool]) ?? [:]
+    
+    // User-specific keys to prevent join state sharing between users
+    @MainActor
+    private func getJoinStatesKey() -> String {
+        guard let userId = SupabaseAuthManager.shared.userId else {
+            print("DEBUG: getJoinStatesKey() - No userId, using anonymous key")
+            return "community_join_states_anonymous"
+        }
+        let key = "community_join_states_\(userId)"
+        print("DEBUG: getJoinStatesKey() - Using key: \(key)")
+        return key
     }
+    
+    @MainActor
+    private func getClubJoinStatesKey() -> String {
+        guard let userId = SupabaseAuthManager.shared.userId else {
+            return "community_club_join_states_anonymous"
+        }
+        return "community_club_join_states_\(userId)"
+    }
+    
+    @MainActor
+    private func loadJoinStates() -> [String: Bool] {
+        (UserDefaults.standard.dictionary(forKey: getJoinStatesKey()) as? [String: Bool]) ?? [:]
+    }
+    
+    @MainActor
     private func saveJoinState(challengeID: UUID, isJoined: Bool) {
         var map = loadJoinStates()
         map[challengeID.uuidString] = isJoined
-        UserDefaults.standard.set(map, forKey: joinStatesKey)
+        let key = getJoinStatesKey()
+        print("DEBUG: saveJoinState() - Saving challengeID: \(challengeID.uuidString), isJoined: \(isJoined) to key: \(key)")
+        print("DEBUG: saveJoinState() - Full map: \(map)")
+        UserDefaults.standard.set(map, forKey: key)
     }
+    
+    @MainActor
     private func loadClubJoinStates() -> [String: Bool] {
-        (UserDefaults.standard.dictionary(forKey: clubJoinStatesKey) as? [String: Bool]) ?? [:]
+        (UserDefaults.standard.dictionary(forKey: getClubJoinStatesKey()) as? [String: Bool]) ?? [:]
     }
+    
+    @MainActor
     private func saveClubJoinState(clubID: UUID, isJoined: Bool) {
         var map = loadClubJoinStates()
         map[clubID.uuidString] = isJoined
-        UserDefaults.standard.set(map, forKey: clubJoinStatesKey)
+        UserDefaults.standard.set(map, forKey: getClubJoinStatesKey())
     }
 
-    // Offline write queue
-    private let writeQueueKey = "community_write_queue"
+    // Offline write queue (user-specific)
+    @MainActor
+    private func getWriteQueueKey() -> String {
+        guard let userId = SupabaseAuthManager.shared.userId else {
+            return "community_write_queue_anonymous"
+        }
+        return "community_write_queue_\(userId)"
+    }
+    
     private struct QueuedWrite: Codable {
         enum Kind: String, Codable { case join, contributions, clubJoin, invite }
         let kind: Kind
@@ -88,14 +126,20 @@ final class CommunityViewModel: ObservableObject {
         let clubID: UUID?
         let usernames: [String]?
     }
+    
+    @MainActor
     private func loadQueuedWrites() -> [QueuedWrite] {
-        guard let data = UserDefaults.standard.data(forKey: writeQueueKey) else { return [] }
+        guard let data = UserDefaults.standard.data(forKey: getWriteQueueKey()) else { return [] }
         return (try? JSONDecoder().decode([QueuedWrite].self, from: data)) ?? []
     }
+    
+    @MainActor
     private func persistQueuedWrites(_ ops: [QueuedWrite]) {
         let data = try? JSONEncoder().encode(ops)
-        UserDefaults.standard.set(data, forKey: writeQueueKey)
+        UserDefaults.standard.set(data, forKey: getWriteQueueKey())
     }
+    
+    @MainActor
     private func enqueue(_ op: QueuedWrite) {
         var ops = loadQueuedWrites()
         ops.append(op)
@@ -104,9 +148,31 @@ final class CommunityViewModel: ObservableObject {
 
     init(dataSource: CommunityDataSource = MockCommunityDataSource()) {
         self.dataSource = dataSource
+        
+        // Clean up old shared keys on first launch (migration)
+        cleanupOldSharedKeys()
+        
         Task { [weak self] in
             for await _ in NotificationCenter.default.notifications(named: .supabaseAuthStateChanged) {
+                print("DEBUG: Auth state changed - clearing challenges and reloading")
+                await MainActor.run {
+                    self?.challenges = []
+                    self?.leaderboard = []
+                    self?.clubs = []
+                }
                 await self?.flushOfflineQueue()
+                self?.load()
+            }
+        }
+    }
+    
+    // Migration: Remove old shared keys that caused join state to leak between users
+    private func cleanupOldSharedKeys() {
+        let oldKeys = ["community_join_states", "community_club_join_states", "community_write_queue"]
+        for key in oldKeys {
+            if UserDefaults.standard.object(forKey: key) != nil {
+                print("DEBUG: Removing old shared key: \(key)")
+                UserDefaults.standard.removeObject(forKey: key)
             }
         }
     }
@@ -115,19 +181,25 @@ final class CommunityViewModel: ObservableObject {
         Task {
             let ch = try await dataSource.loadChallenges()
             let lb = try await dataSource.loadLeaderboard()
-            let persisted = loadJoinStates()
+            
+            let persisted = await MainActor.run { loadJoinStates() }
+            print("DEBUG: CommunityViewModel.load() - Loaded \(ch.count) challenges")
+            print("DEBUG: CommunityViewModel.load() - Persisted join states: \(persisted)")
             let adjusted = ch.map { c -> Challenge in
                 var copy = c
                 copy.isJoined = persisted[c.id.uuidString] ?? false
+                print("DEBUG: Challenge '\(c.title)' - ID: \(c.id.uuidString) - isJoined: \(copy.isJoined)")
                 return copy
             }
+            
             let clubs = try await dataSource.loadClubs()
-            let clubPersisted = loadClubJoinStates()
+            let clubPersisted = await MainActor.run { loadClubJoinStates() }
             let adjustedClubs = clubs.map { cl -> Club in
                 var c = cl
                 c.isJoined = clubPersisted[cl.id.uuidString] ?? c.isJoined
                 return c
             }
+            
             await MainActor.run {
                 self.challenges = adjusted
                 self.leaderboard = lb
@@ -150,7 +222,7 @@ final class CommunityViewModel: ObservableObject {
             do { try await dataSource.setJoinState(challengeID: challengeID, isJoined: joined) }
             catch {
                 let op = QueuedWrite(kind: .join, challengeID: challengeID, isJoined: joined, items: nil as [SupabaseCommunityDataSource.ContributionUpload]?, clubID: nil, usernames: nil)
-                enqueue(op)
+                await MainActor.run { enqueue(op) }
             }
         }
     }
@@ -165,7 +237,7 @@ final class CommunityViewModel: ObservableObject {
             do { try await dataSource.setClubMembership(clubID: clubID, isJoined: joined) }
             catch {
                 let op = QueuedWrite(kind: .clubJoin, challengeID: nil, isJoined: joined, items: nil, clubID: clubID, usernames: nil)
-                enqueue(op)
+                await MainActor.run { enqueue(op) }
             }
         }
     }
@@ -182,7 +254,7 @@ final class CommunityViewModel: ObservableObject {
             do { try await dataSource.setJoinState(challengeID: created.id, isJoined: true) }
             catch {
                 let op = QueuedWrite(kind: .join, challengeID: created.id, isJoined: true, items: nil as [SupabaseCommunityDataSource.ContributionUpload]?, clubID: nil, usernames: nil)
-                enqueue(op)
+                await MainActor.run { enqueue(op) }
             }
         }
     }
@@ -196,7 +268,7 @@ final class CommunityViewModel: ObservableObject {
         do { try await dataSource.setClubMembership(clubID: created.id, isJoined: created.isJoined) }
         catch {
             let op = QueuedWrite(kind: .clubJoin, challengeID: nil, isJoined: created.isJoined, items: nil, clubID: created.id, usernames: nil)
-            enqueue(op)
+            await MainActor.run { enqueue(op) }
         }
     }
 
@@ -264,13 +336,13 @@ final class CommunityViewModel: ObservableObject {
                 }
             } catch {
                 let op = QueuedWrite(kind: .contributions, challengeID: ch.id, isJoined: nil, items: items, clubID: nil, usernames: nil)
-                enqueue(op)
+                await MainActor.run { enqueue(op) }
             }
         }
     }
 
     private func flushOfflineQueue() async {
-        let ops = loadQueuedWrites()
+        let ops = await MainActor.run { loadQueuedWrites() }
         guard !ops.isEmpty else { return }
         var remaining: [QueuedWrite] = []
         for op in ops {
@@ -289,31 +361,51 @@ final class CommunityViewModel: ObservableObject {
                 remaining.append(op)
             }
         }
-        persistQueuedWrites(remaining)
+        await MainActor.run { persistQueuedWrites(remaining) }
     }
 
     // Delete APIs
-    func canDelete(challengeID: UUID) async -> Bool {
-        await dataSource.canDeleteChallenge(challengeID: challengeID)
-    }
-
-    func deleteChallenge(challengeID: UUID) async throws {
-        try await dataSource.deleteChallenge(challengeID: challengeID)
-        await MainActor.run {
-            self.challenges.removeAll { $0.id == challengeID }
-            var states = self.loadJoinStates()
-            states.removeValue(forKey: challengeID.uuidString)
-            UserDefaults.standard.set(states, forKey: self.joinStatesKey)
-        }
-    }
 
     func inviteParticipants(challengeID: UUID, usernames: [String]) {
         Task {
             do { try await dataSource.inviteToChallenge(challengeID: challengeID, usernames: usernames) }
             catch {
                 let op = QueuedWrite(kind: .invite, challengeID: challengeID, isJoined: nil, items: nil, clubID: nil, usernames: usernames)
-                enqueue(op)
+                await MainActor.run { enqueue(op) }
             }
         }
+    }
+    
+    // MARK: - Ownership Methods
+    
+    @MainActor
+    func canModifyChallenge(_ challenge: Challenge) -> Bool {
+        guard let currentUserId = getCurrentUserId() else { return false }
+        return challenge.createdBy == currentUserId
+    }
+    
+    @MainActor
+    func canDeleteChallenge(_ challenge: Challenge) -> Bool {
+        return canModifyChallenge(challenge)
+    }
+    
+    @MainActor
+    private func getCurrentUserId() -> UUID? {
+        guard let userIdString = SupabaseAuthManager.shared.userId else { return nil }
+        return UUID(uuidString: userIdString)
+    }
+    
+    @MainActor
+    func deleteChallenge(challengeID: UUID) async throws {
+        guard let challenge = challenges.first(where: { $0.id == challengeID }),
+              canDeleteChallenge(challenge) else {
+            throw NSError(domain: "CommunityViewModel", code: 403, userInfo: [NSLocalizedDescriptionKey: "You don't have permission to delete this challenge"])
+        }
+        
+        try await dataSource.deleteChallenge(challengeID: challengeID)
+        challenges.removeAll { $0.id == challengeID }
+        var states = self.loadJoinStates()
+        states.removeValue(forKey: challengeID.uuidString)
+        UserDefaults.standard.set(states, forKey: self.getJoinStatesKey())
     }
 }
