@@ -28,6 +28,9 @@ Pods/
 .private/
 .private/integration-backlog.md
 
+# Security documentation (keep private)
+SECURITY_AUDIT.md
+
 # Archives
 *.xcarchive
 
