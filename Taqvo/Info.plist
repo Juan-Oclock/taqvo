@@ -44,9 +44,9 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Allow choosing a photo to attach to in-run markers</string>
 	<key>SUPABASE_ANON_KEY</key>
-	<string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNidHdlbGp3cHh5aGxndmFveHlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3MzAxMjMsImV4cCI6MjA3NjMwNjEyM30.vSK4hI73zYQFx4NvgI52ieAwwXenhQq5QU4sGu10M5U</string>
+	<string>YOUR_SUPABASE_ANON_KEY</string>
 	<key>SUPABASE_URL</key>
-	<string>https://cbtweljwpxyhlgvaoxyp.supabase.co</string>
+	<string>YOUR_SUPABASE_URL</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

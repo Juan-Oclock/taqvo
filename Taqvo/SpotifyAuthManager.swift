@@ -17,7 +17,7 @@ final class SpotifyAuthManager: NSObject, ObservableObject {
 
     // MARK: - Config (replace placeholders during setup)
     // Set your registered values from https://developer.spotify.com/dashboard
-    private let clientID: String = "593743d854b348558f5341b06368d1a7"
+    private let clientID: String = "YOUR_SPOTIFY_CLIENT_ID"
     private let redirectURI: String = "taqvo://spotify-callback"
     private let scopes: [String] = [
         "user-read-playback-state",

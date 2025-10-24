@@ -229,6 +229,8 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
     struct ActivityUpload: Codable {
         let id: String
         let user_id: String
+        let username: String?
+        let avatar_url: String?
         let started_at: String
         let ended_at: String?
         let distance_meters: Int
@@ -238,6 +240,8 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
     struct ActivityUploadResponse: Codable {
         let id: String?
         let user_id: String?
+        let username: String?
+        let avatar_url: String?
         let started_at: String?
         let ended_at: String?
         let distance_meters: Int?
@@ -252,6 +256,8 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
         let upload = ActivityUpload(
             id: activity.id.uuidString,
             user_id: userId,
+            username: activity.username,
+            avatar_url: activity.avatarUrl,
             started_at: ISO8601DateFormatter().string(from: activity.startDate),
             ended_at: ISO8601DateFormatter().string(from: activity.endDate),
             distance_meters: Int(activity.distanceMeters),
@@ -262,6 +268,8 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
             let _: ActivityUploadResponse = try await post(path: "/rest/v1/activities", jsonBody: [
                 "id": upload.id,
                 "user_id": upload.user_id,
+                "username": upload.username as Any,
+                "avatar_url": upload.avatar_url as Any,
                 "started_at": upload.started_at,
                 "ended_at": upload.ended_at,
                 "distance_meters": upload.distance_meters,

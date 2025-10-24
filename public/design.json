@@ -1,0 +1,36 @@
+{
+  "colors": {
+    "containerGradientStart": "#ffffff",
+    "containerGradientEnd": "#202020",
+    "containerShadow": "#202020"
+  },
+  "shadows": {
+    "containerShadow": {
+      "color": "#202020",
+      "opacity": 0.35,
+      "x": 0,
+      "y": -8,
+      "blur": 20
+    }
+  },
+  "radii": {
+    "containerTopRadius": 48
+  },
+  "components": {
+    "BottomContainer": {
+      "background": {
+        "type": "linearGradient",
+        "from": "containerGradientStart",
+        "to": "containerGradientEnd",
+        "angle": 180
+      },
+      "shadow": "containerShadow",
+      "cornerRadius": "containerTopRadius"
+    }
+  },
+  "metadata": {
+    "component": "Bottom curved container",
+    "platform": "iOS SwiftUI",
+    "version": "1.0"
+  }
+}

@@ -67,6 +67,8 @@ struct ActivityComment: Identifiable, Codable, Hashable {
 struct FeedActivity: Identifiable, Codable, Hashable {
     let id: UUID
     let userId: String // User who created this activity
+    let username: String? // Username of the user
+    let avatarUrl: String? // Profile photo URL or base64
     let distanceMeters: Double
     let durationSeconds: Double
     let route: [Coordinate]
@@ -77,7 +79,7 @@ struct FeedActivity: Identifiable, Codable, Hashable {
     let photoPNG: Data?
     let title: String?
     var likeCount: Int
-    var isLiked: Bool
+    var likedByUserIds: [String] // Array of user IDs who liked this activity
     var comments: [ActivityComment]
     let kind: ActivityKind
     let caloriesKilocalories: Double
@@ -93,11 +95,13 @@ struct FeedActivity: Identifiable, Codable, Hashable {
     let visibility: PostVisibility
 
     enum CodingKeys: String, CodingKey {
-        case id, userId, distanceMeters, durationSeconds, route, startDate, endDate, snapshotPNG, note, photoPNG, title, likeCount, isLiked, comments, kind, caloriesKilocalories, averageHeartRateBPM, splitsSeconds, challengeTitle, challengeIsPublic, stepsCount, elevationGainMeters, visibility
+        case id, userId, username, avatarUrl, distanceMeters, durationSeconds, route, startDate, endDate, snapshotPNG, note, photoPNG, title, likeCount, likedByUserIds, comments, kind, caloriesKilocalories, averageHeartRateBPM, splitsSeconds, challengeTitle, challengeIsPublic, stepsCount, elevationGainMeters, visibility
     }
 
     init(id: UUID,
          userId: String,
+         username: String? = nil,
+         avatarUrl: String? = nil,
          distanceMeters: Double,
          durationSeconds: Double,
          route: [Coordinate],
@@ -108,7 +112,7 @@ struct FeedActivity: Identifiable, Codable, Hashable {
          photoPNG: Data?,
          title: String? = nil,
          likeCount: Int = 0,
-         isLiked: Bool = false,
+         likedByUserIds: [String] = [],
          comments: [ActivityComment] = [],
          kind: ActivityKind,
          caloriesKilocalories: Double,
@@ -121,6 +125,8 @@ struct FeedActivity: Identifiable, Codable, Hashable {
          visibility: PostVisibility = .privateOnly) {
         self.id = id
         self.userId = userId
+        self.username = username
+        self.avatarUrl = avatarUrl
         self.distanceMeters = distanceMeters
         self.durationSeconds = durationSeconds
         self.route = route
@@ -131,7 +137,7 @@ struct FeedActivity: Identifiable, Codable, Hashable {
         self.photoPNG = photoPNG
         self.title = title
         self.likeCount = likeCount
-        self.isLiked = isLiked
+        self.likedByUserIds = likedByUserIds
         self.comments = comments
         self.kind = kind
         self.caloriesKilocalories = caloriesKilocalories
@@ -148,6 +154,8 @@ struct FeedActivity: Identifiable, Codable, Hashable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
         userId = try c.decodeIfPresent(String.self, forKey: .userId) ?? ""
+        username = try c.decodeIfPresent(String.self, forKey: .username)
+        avatarUrl = try c.decodeIfPresent(String.self, forKey: .avatarUrl)
         distanceMeters = try c.decode(Double.self, forKey: .distanceMeters)
         durationSeconds = try c.decode(Double.self, forKey: .durationSeconds)
         route = try c.decode([Coordinate].self, forKey: .route)
@@ -158,7 +166,7 @@ struct FeedActivity: Identifiable, Codable, Hashable {
         photoPNG = try c.decodeIfPresent(Data.self, forKey: .photoPNG)
         title = try c.decodeIfPresent(String.self, forKey: .title)
         likeCount = try c.decodeIfPresent(Int.self, forKey: .likeCount) ?? 0
-        isLiked = try c.decodeIfPresent(Bool.self, forKey: .isLiked) ?? false
+        likedByUserIds = try c.decodeIfPresent([String].self, forKey: .likedByUserIds) ?? []
         comments = try c.decodeIfPresent([ActivityComment].self, forKey: .comments) ?? []
         kind = try c.decodeIfPresent(ActivityKind.self, forKey: .kind) ?? .run
         caloriesKilocalories = try c.decodeIfPresent(Double.self, forKey: .caloriesKilocalories) ?? 0
@@ -175,6 +183,8 @@ struct FeedActivity: Identifiable, Codable, Hashable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id)
         try c.encode(userId, forKey: .userId)
+        try c.encodeIfPresent(username, forKey: .username)
+        try c.encodeIfPresent(avatarUrl, forKey: .avatarUrl)
         try c.encode(distanceMeters, forKey: .distanceMeters)
         try c.encode(durationSeconds, forKey: .durationSeconds)
         try c.encode(route, forKey: .route)
@@ -184,7 +194,7 @@ struct FeedActivity: Identifiable, Codable, Hashable {
         try c.encodeIfPresent(note, forKey: .note)
         try c.encodeIfPresent(photoPNG, forKey: .photoPNG)
         try c.encode(likeCount, forKey: .likeCount)
-        try c.encode(isLiked, forKey: .isLiked)
+        try c.encode(likedByUserIds, forKey: .likedByUserIds)
         try c.encode(comments, forKey: .comments)
         try c.encode(kind, forKey: .kind)
         try c.encode(caloriesKilocalories, forKey: .caloriesKilocalories)
@@ -267,9 +277,22 @@ final class ActivityStore: ObservableObject {
     func add(summary: ActivitySummary, snapshot: UIImage?, note: String? = nil, photo: UIImage? = nil, avgHeartRateBPM: Double? = nil, title: String? = nil, visibility: PostVisibility = .privateOnly) {
         let coords = summary.route.map { Coordinate(latitude: $0.latitude, longitude: $0.longitude) }
         let splits = ActivityStore.computeSplits(from: summary.routeSamples, totalDistanceMeters: summary.distanceMeters, totalDurationSeconds: summary.durationSeconds)
+        
+        // Get current user profile info
+        let profileService = ProfileService.shared
+        let username = profileService.currentProfile?.username
+        let avatarUrl = profileService.currentProfile?.avatarUrl
+        
+        print("DEBUG ActivityStore.add() - Creating activity with:")
+        print("  - Username: \(username ?? "nil")")
+        print("  - AvatarUrl: \(avatarUrl ?? "nil")")
+        print("  - CurrentProfile exists: \(profileService.currentProfile != nil)")
+        
         let activity = FeedActivity(
             id: UUID(),
             userId: SupabaseAuthManager.shared.userId ?? "",
+            username: username,
+            avatarUrl: avatarUrl,
             distanceMeters: summary.distanceMeters,
             durationSeconds: summary.durationSeconds,
             route: coords,
@@ -280,7 +303,7 @@ final class ActivityStore: ObservableObject {
             photoPNG: photo?.pngData(),
             title: title,
             likeCount: 0,
-            isLiked: false,
+            likedByUserIds: [],
             comments: [],
             kind: summary.kind,
             caloriesKilocalories: summary.caloriesKilocalories,
@@ -355,16 +378,23 @@ final class ActivityStore: ObservableObject {
         save()
     }
 
+    @MainActor
     func toggleLike(activityID: UUID) {
         guard let idx = activities.firstIndex(where: { $0.id == activityID }) else { return }
+        guard let currentUserId = SupabaseAuthManager.shared.userId else { return }
+        
         var a = activities[idx]
-        if a.isLiked {
-            a.isLiked = false
+        
+        if a.likedByUserIds.contains(currentUserId) {
+            // User already liked it, so unlike
+            a.likedByUserIds.removeAll { $0 == currentUserId }
             if a.likeCount > 0 { a.likeCount -= 1 }
         } else {
-            a.isLiked = true
+            // User hasn't liked it yet, so like it
+            a.likedByUserIds.append(currentUserId)
             a.likeCount += 1
         }
+        
         activities[idx] = a
         save()
     }

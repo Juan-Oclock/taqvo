@@ -512,52 +512,27 @@ struct FeedView: View {
                 if sortedActivities.isEmpty {
                     emptyStateView
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 16) {
+                    ScrollView(showsIndicators: false) {
+                        LazyVStack(spacing: 12) {
                             ForEach(sortedActivities) { activity in
-                                ActivityCard(activity: activity, onTap: {
-                                    selectedActivity = activity
-                                })
-                                .environmentObject(store)
+                                ModernActivityCard(activity: activity)
+                                    .environmentObject(store)
+                                    .onTapGesture {
+                                        selectedActivity = activity
+                                    }
                             }
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 16)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 8)
+                        .padding(.bottom, 20)
                     }
                     .refreshable {
                         await refreshFeed()
                     }
                 }
             }
-            .navigationTitle("FEED")
+            .navigationTitle("Feed")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 16) {
-                        Button(action: {}) {
-                            Image(systemName: "person.circle")
-                                .font(.system(size: 24))
-                                .foregroundColor(.taqvoTextDark)
-                        }
-                        Button(action: {}) {
-                            Image(systemName: "square.and.pencil")
-                                .font(.system(size: 24))
-                                .foregroundColor(.taqvoTextDark)
-                        }
-                        Button(action: {}) {
-                            ZStack(alignment: .topTrailing) {
-                                Image(systemName: "bell")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.taqvoTextDark)
-                                Circle()
-                                    .fill(Color.red)
-                                    .frame(width: 8, height: 8)
-                                    .offset(x: 4, y: -4)
-                            }
-                        }
-                    }
-                }
-            }
             .navigationDestination(item: $selectedActivity) { activity in
                 ActivityDetailView(activity: activity)
             }
@@ -565,20 +540,21 @@ struct FeedView: View {
     }
     
     private var emptyStateView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "figure.run.circle.fill")
-                .font(.system(size: 80))
-                .foregroundColor(.taqvoCTA.opacity(0.6))
+        VStack(spacing: 24) {
+            Image(systemName: "figure.run")
+                .font(.system(size: 64, weight: .thin))
+                .foregroundColor(.taqvoCTA.opacity(0.5))
             
-            Text("No Activities Yet")
-                .font(.taqvo(.title))
-                .foregroundColor(.taqvoTextDark)
-            
-            Text("Start your first run and share it\nto see it appear here!")
-                .font(.taqvo(.body))
-                .foregroundColor(.taqvoAccentText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
+            VStack(spacing: 8) {
+                Text("No Activities")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(.taqvoTextDark)
+                
+                Text("Complete your first activity\nto see it here")
+                    .font(.system(size: 15))
+                    .foregroundColor(.taqvoAccentText)
+                    .multilineTextAlignment(.center)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -588,198 +564,285 @@ struct FeedView: View {
     }
 }
 
-struct FilterPill: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.taqvo(.body))
-                .foregroundColor(isSelected ? .taqvoTextLight : .taqvoTextDark)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(isSelected ? Color.taqvoCTA : Color.black.opacity(0.2))
-                .cornerRadius(20)
-        }
-    }
-}
+// MARK: - Modern Activity Card (FitFlow Style)
 
-struct ActivityCard: View {
+struct ModernActivityCard: View {
     let activity: FeedActivity
-    let onTap: () -> Void
     @EnvironmentObject var store: ActivityStore
-    @State private var showCommentsBottomSheet = false
+    @State private var showCommentsSheet = false
     
-    private var activityType: String {
+    private var displayUsername: String {
+        // Always display the actual username if available
+        if let username = activity.username, !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return username
+        }
+        
+        // Fallback to "User" if no username is set
+        return "User"
+    }
+    
+    private var activityIcon: String {
         switch activity.kind {
-        case .walk: return "WALKING"
-        case .jog: return "JOGGING"
-        case .run: return "RUNNING"
-        case .ride: return "CYCLING"
+        case .walk: return "figure.walk"
+        case .jog: return "figure.walk.motion"
+        case .run: return "figure.run"
+        case .ride: return "bicycle"
         }
     }
     
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // User Header
-            HStack(spacing: 12) {
-                Circle()
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: 50, height: 50)
-                    .overlay(
-                        Image(systemName: "person.fill")
-                            .foregroundColor(.gray)
-                            .font(.system(size: 22))
-                    )
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(activity.userId == (SupabaseAuthManager.shared.userId ?? "") ? "You" : "User")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.taqvoTextDark)
-                    
-                    Text(activity.endDate.formatted(date: .abbreviated, time: .omitted))
-                        .font(.system(size: 14))
-                        .foregroundColor(.taqvoAccentText)
-                }
-                
-                Spacer()
-            }
-            .padding(20)
-            .contentShape(Rectangle())
-            .onTapGesture { onTap() }
-            
-            // Activity Type
-            Text(activityType)
-                .font(.system(size: 28, weight: .medium))
-                .italic()
-                .foregroundColor(.taqvoTextDark)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 8)
-                .onTapGesture { onTap() }
-            
-            // Note if available
-            if let note = activity.note, !note.isEmpty {
-                Text(note)
-                    .font(.system(size: 15))
-                    .foregroundColor(.taqvoAccentText)
-                    .lineLimit(2)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 12)
-                    .onTapGesture { onTap() }
-            }
-            
-            // Stats
-            HStack(spacing: 0) {
-                StatColumn(value: String(format: "%.2f", activity.distanceMeters / 1000), 
-                          unit: "km", 
-                          label: "Distance")
-                
-                StatColumn(value: ActivityTrackingViewModel.formattedDuration(activity.durationSeconds), 
-                          unit: "", 
-                          label: "Duration")
-                
-                StatColumn(value: ActivityTrackingViewModel.formattedPace(
-                              distanceMeters: activity.distanceMeters,
-                              durationSeconds: activity.durationSeconds),
-                          unit: "min/km",
-                          label: "Avg. Pace")
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 20)
-            .onTapGesture { onTap() }
-            
-            // Map/Image
-            Group {
-                if let data = activity.photoPNG, let img = UIImage(data: data) {
-                    Image(uiImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 280)
-                        .clipped()
-                } else if let data = activity.snapshotPNG, let img = UIImage(data: data) {
-                    Image(uiImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 280)
-                        .clipped()
-                } else {
-                    MapRouteView(route: ActivityStore.clCoordinates(from: activity.route))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 280)
-                }
-            }
-            .onTapGesture { onTap() }
-            
-            // Actions
-            HStack(spacing: 32) {
-                Button {
-                    store.toggleLike(activityID: activity.id)
-                } label: {
-                    Image(systemName: activity.isLiked ? "heart.fill" : "heart")
-                        .font(.system(size: 24))
-                        .foregroundColor(activity.isLiked ? .red : .taqvoTextDark)
-                }
-                
-                Button {
-                    showCommentsBottomSheet = true
-                } label: {
-                    Image(systemName: "bubble.right")
-                        .font(.system(size: 24))
-                        .foregroundColor(.taqvoTextDark)
-                }
-                
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            
-            // Engagement text
-            if activity.likeCount == 0 {
-                Text("BE THE FIRST TO LIKE THIS!")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.taqvoTextDark)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
-            }
+    private var activityTitle: String {
+        if let title = activity.title, !title.isEmpty {
+            return title
         }
-        .background(Color.black.opacity(0.2))
+        switch activity.kind {
+        case .walk: return "Morning Walk"
+        case .jog: return "Morning Jog"
+        case .run: return "Morning Run"
+        case .ride: return "Morning Ride"
+        }
+    }
+    
+    private var isLikedByCurrentUser: Bool {
+        guard let currentUserId = SupabaseAuthManager.shared.userId else { return false }
+        return activity.likedByUserIds.contains(currentUserId)
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header with user info
+            HStack(spacing: 12) {
+                profileImage
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(displayUsername)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                    
+                    Text(timeAgo)
+                        .font(.system(size: 13))
+                        .foregroundColor(.gray)
+                }
+                
+                Spacer()
+                
+                Image(systemName: activityIcon)
+                    .font(.system(size: 24))
+                    .foregroundColor(.taqvoCTA)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            
+            // Map/Photo
+            mapOrPhotoView
+                .frame(height: 200)
+                .clipped()
+            
+            // Activity Title & Stats
+            VStack(alignment: .leading, spacing: 16) {
+                // Title
+                Text(activityTitle)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(.white)
+                
+                // Stats Row
+                HStack(spacing: 24) {
+                    StatItem(
+                        label: "Distance",
+                        value: String(format: "%.1f", activity.distanceMeters / 1000),
+                        unit: "km"
+                    )
+                    
+                    StatItem(
+                        label: "Time",
+                        value: ActivityTrackingViewModel.formattedDuration(activity.durationSeconds),
+                        unit: ""
+                    )
+                    
+                    StatItem(
+                        label: "Pace",
+                        value: ActivityTrackingViewModel.formattedPace(
+                            distanceMeters: activity.distanceMeters,
+                            durationSeconds: activity.durationSeconds
+                        ),
+                        unit: ""
+                    )
+                }
+                
+                // Note if available
+                if let note = activity.note, !note.isEmpty {
+                    Text(note)
+                        .font(.system(size: 14))
+                        .foregroundColor(.gray)
+                        .lineLimit(2)
+                }
+                
+                // Actions
+                HStack(spacing: 24) {
+                    Button {
+                        store.toggleLike(activityID: activity.id)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: isLikedByCurrentUser ? "heart.fill" : "heart")
+                                .font(.system(size: 22))
+                                .foregroundColor(isLikedByCurrentUser ? .red : .white)
+                            
+                            if activity.likeCount > 0 {
+                                Text("\(activity.likeCount)")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                    }
+                    
+                    Button {
+                        showCommentsSheet = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "message")
+                                .font(.system(size: 22))
+                                .foregroundColor(.white)
+                            
+                            if !activity.comments.isEmpty {
+                                Text("\(activity.comments.count)")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                    }
+                    
+                    Button {
+                        // Share action
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 22))
+                            .foregroundColor(.white)
+                    }
+                    
+                    Spacer()
+                }
+            }
+            .padding(16)
+        }
+        .background(Color(red: 0.15, green: 0.15, blue: 0.15))
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .sheet(isPresented: $showCommentsBottomSheet) {
-            CommentsBottomSheet(isPresented: $showCommentsBottomSheet, activity: activity)
+        .sheet(isPresented: $showCommentsSheet) {
+            CommentsBottomSheet(isPresented: $showCommentsSheet, activity: activity)
                 .environmentObject(store)
         }
     }
+    
+    private var profileImage: some View {
+        Group {
+            if let avatarUrl = activity.avatarUrl, !avatarUrl.isEmpty {
+                if avatarUrl.hasPrefix("http") || avatarUrl.hasPrefix("https") {
+                    // Remote URL from Supabase storage
+                    AsyncImage(url: URL(string: avatarUrl)) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        case .failure(let error):
+                            let _ = print("DEBUG: AsyncImage failed to load: \(error)")
+                            placeholderAvatar
+                        case .empty:
+                            ProgressView()
+                                .frame(width: 44, height: 44)
+                        @unknown default:
+                            placeholderAvatar
+                        }
+                    }
+                } else if let data = Data(base64Encoded: avatarUrl), let uiImage = UIImage(data: data) {
+                    // Base64 encoded image
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    let _ = print("DEBUG: Invalid avatar URL format: \(avatarUrl)")
+                    placeholderAvatar
+                }
+            } else {
+                let _ = print("DEBUG: No avatar URL for activity: \(activity.id)")
+                placeholderAvatar
+            }
+        }
+    }
+    
+    private var placeholderAvatar: some View {
+        Circle()
+            .fill(Color.gray.opacity(0.3))
+            .overlay(
+                Image(systemName: "person.fill")
+                    .foregroundColor(.gray.opacity(0.6))
+                    .font(.system(size: 18))
+            )
+    }
+    
+    private var mapOrPhotoView: some View {
+        Group {
+            if let data = activity.photoPNG, let img = UIImage(data: data) {
+                Image(uiImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else if let data = activity.snapshotPNG, let img = UIImage(data: data) {
+                Image(uiImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                MapRouteView(route: ActivityStore.clCoordinates(from: activity.route))
+            }
+        }
+    }
+    
+    private var timeAgo: String {
+        let now = Date()
+        let interval = now.timeIntervalSince(activity.endDate)
+        
+        if interval < 60 {
+            return "just now"
+        } else if interval < 3600 {
+            let minutes = Int(interval / 60)
+            return "\(minutes)m ago"
+        } else if interval < 86400 {
+            let hours = Int(interval / 3600)
+            return "\(hours)h ago"
+        } else if interval < 604800 {
+            let days = Int(interval / 86400)
+            return "\(days)d ago"
+        } else {
+            return activity.endDate.formatted(date: .abbreviated, time: .omitted)
+        }
+    }
 }
 
-struct StatColumn: View {
+struct StatItem: View {
+    let label: String
     let value: String
     let unit: String
-    let label: String
     
     var body: some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.system(size: 24, weight: .bold))
-                .foregroundColor(.taqvoTextDark)
-            
-            if !unit.isEmpty {
-                Text(unit)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.taqvoAccentText)
-            } else {
-                Text(" ")
-                    .font(.system(size: 11))
-            }
-            
+        VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.system(size: 11))
-                .foregroundColor(.taqvoAccentText)
+                .foregroundColor(.gray)
+                .textCase(.uppercase)
+            
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value)
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                
+                if !unit.isEmpty {
+                    Text(unit)
+                        .font(.system(size: 14))
+                        .foregroundColor(.gray)
+                }
+            }
         }
-        .frame(maxWidth: .infinity)
     }
 }
 
@@ -802,6 +865,11 @@ struct ActivityRow: View {
         case .run: return "Ran"
         case .ride: return "Rode"
         }
+    }
+    
+    private var isLikedByCurrentUser: Bool {
+        guard let currentUserId = SupabaseAuthManager.shared.userId else { return false }
+        return activity.likedByUserIds.contains(currentUserId)
     }
 
     private func compositeShareImageURL() -> URL {
@@ -974,12 +1042,12 @@ struct ActivityRow: View {
                     store.toggleLike(activityID: activity.id)
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: activity.isLiked ? "heart.fill" : "heart")
+                        Image(systemName: isLikedByCurrentUser ? "heart.fill" : "heart")
                         Text("\(activity.likeCount)")
                     }
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(activity.isLiked ? .taqvoCTA : .taqvoTextDark)
+                .foregroundColor(isLikedByCurrentUser ? .taqvoCTA : .taqvoTextDark)
 
                 Button {
                     showCommentsBottomSheet = true

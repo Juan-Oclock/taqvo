@@ -366,7 +366,7 @@ struct CommentComposerView: View {
             photoPNG: nil,
             title: "Morning Run",
             likeCount: 5,
-            isLiked: false,
+            likedByUserIds: [],
             comments: [
                 ActivityComment(id: UUID(), author: "jane@example.com", text: "Great job!", date: Date().addingTimeInterval(-300), authorUsername: "Jane Smith", authorProfileImageBase64: nil),
                 ActivityComment(id: UUID(), author: "mike@example.com", text: "Nice pace!", date: Date().addingTimeInterval(-150), authorUsername: "Mike Johnson", authorProfileImageBase64: nil)
