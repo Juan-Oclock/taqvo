@@ -448,7 +448,8 @@ struct PostRunSummaryView: View {
                                                 startDate: Date(),
                                                 endDate: Date(),
                                                 kind: .run,
-                                                caloriesKilocalories: 123))
+                                                caloriesKilocalories: 123,
+                                                activeCaloriesKilocalories: 105))
 }
 
 // HealthKit sync service
@@ -665,7 +666,8 @@ final class HealthSyncService: ObservableObject {
                                                       startDate: w.startDate,
                                                       endDate: w.endDate,
                                                       kind: kind,
-                                                      caloriesKilocalories: kcal)
+                                                      caloriesKilocalories: kcal,
+                                                      activeCaloriesKilocalories: kcal * 0.85)
                             }
                         }
                         var collected: [ActivitySummary] = []
