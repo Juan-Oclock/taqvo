@@ -317,8 +317,8 @@ struct CreateImageView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "figure.run")
                         .font(.system(size: 20, weight: .semibold))
-                    Text("TAQVO")
-                        .font(.system(size: 16, weight: .bold))
+                    Text("taqvo")
+                        .font(.system(size: 16, weight: .heavy))
                         .tracking(1.5)
                 }
                 .foregroundColor(.taqvoCTA)
@@ -340,7 +340,7 @@ struct CreateImageView: View {
                         .frame(maxWidth: geometry.size.width - 32, alignment: .leading)
                     
                     // Stats Row
-                    HStack(spacing: 16) {
+                    HStack(spacing: 12) {
                         statItem(
                             value: String(format: "%.2f", summary.distanceMeters / 1000.0),
                             unit: "km",
@@ -358,6 +358,14 @@ struct CreateImageView: View {
                             unit: "cal",
                             label: "Calories"
                         )
+                        
+                        if let steps = summary.stepsCount, steps > 0 {
+                            statItem(
+                                value: String(steps),
+                                unit: "",
+                                label: "Steps"
+                            )
+                        }
                     }
                 }
                 .offset(x: 16, y: geometry.size.height - 180)
