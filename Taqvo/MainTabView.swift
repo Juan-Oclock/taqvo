@@ -432,9 +432,7 @@ struct ActivityView: View {
             } else {
                 if !spotifyVM.isAuthorized {
                     Button {
-                        Task {
-                            await spotifyVM.authorize()
-                        }
+                        SpotifyAuthManager.shared.startAuthorization()
                     } label: {
                         HStack {
                             Image(systemName: "lock.open.fill")
