@@ -9,11 +9,13 @@ import SwiftUI
 import UIKit
 import Charts
 import PhotosUI
+import CoreLocation
 
 struct MainTabView: View {
     @EnvironmentObject var appState: AppState
     @State private var selectedTab: Tab = .activity
     @StateObject private var profileService = ProfileService.shared
+    @StateObject private var weatherVM = WeatherViewModel()
 
     enum Tab: Hashable {
         case feed, community, activity, insights, profile
@@ -33,7 +35,7 @@ struct MainTabView: View {
                 }
                 .tag(Tab.community)
 
-            ActivityView()
+            ActivityView(weatherVM: weatherVM)
                 .tabItem {
                     VStack {
                         Image(systemName: "figure.run")
@@ -74,12 +76,14 @@ struct MainTabView: View {
 
 struct ActivityView: View {
     @EnvironmentObject var appState: AppState
+    @ObservedObject var weatherVM: WeatherViewModel
     @State private var activityType: ActivityType = .run
     @State private var goal: Goal = .none
     @State private var navigateToLive: Bool = false
     @State private var showCountdown: Bool = false
     @State private var countdownValue: Int = 3
     @StateObject private var trackingVM = ActivityTrackingViewModel()
+    @StateObject private var locationManager = LocationManager()
 
     @AppStorage("goalType") private var storedGoalType: String = Goal.none.rawValue
     @AppStorage("goalTimeSeconds") private var storedGoalTimeSeconds: Double = 30 * 60
@@ -119,6 +123,23 @@ struct ActivityView: View {
                     Text("Set up your activity")
                         .font(.system(size: 16))
                         .foregroundColor(.taqvoAccentText)
+                    
+                    // Weather info
+                    if !weatherVM.isLoading && weatherVM.currentWeather != nil {
+                        HStack(spacing: 8) {
+                            Image(systemName: weatherVM.weatherConditionIcon)
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.taqvoCTA)
+                            
+                            Text(weatherVM.formattedWeatherString)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.taqvoAccentText)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.black.opacity(0.1))
+                        .cornerRadius(20)
+                    }
                 }
                 .padding(.top, 40)
                 
@@ -701,7 +722,7 @@ struct ActivityView: View {
                 if let savedTime = UserDefaults.standard.object(forKey: "defaultTimeGoalSeconds") as? Double {
                     timeMinutes = Int(savedTime / 60.0)
                 }
-
+                
                 // Apply intents for preselection if present
                 if let intent = appState.activityIntent {
                     switch intent {
@@ -740,6 +761,16 @@ struct ActivityView: View {
                     musicVM.loadPlaylists()
                 }
                 Task { if spotifyVM.isAuthorized { await spotifyVM.refreshState() } }
+                
+                // Fetch weather based on location
+                locationManager.requestLocation()
+            }
+            .onChange(of: locationManager.location) { _, newLocation in
+                if let location = newLocation {
+                    Task {
+                        await weatherVM.fetchWeather(for: location)
+                    }
+                }
             }
             .navigationDestination(isPresented: $navigateToLive) {
                 LiveActivityView()
