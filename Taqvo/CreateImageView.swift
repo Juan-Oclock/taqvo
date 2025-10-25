@@ -26,13 +26,11 @@ struct CreateImageView: View {
     enum ImageFormat: String, CaseIterable {
         case stories = "Stories"
         case square = "Square"
-        case landscape = "Landscape"
         
         var size: CGSize {
             switch self {
             case .stories: return CGSize(width: 1080, height: 1920)
             case .square: return CGSize(width: 1080, height: 1080)
-            case .landscape: return CGSize(width: 1920, height: 1080)
             }
         }
         
@@ -55,11 +53,8 @@ struct CreateImageView: View {
                         // Format Selector
                         formatSelector
                         
-                        // Image Preview
+                        // Image Preview (includes buttons below)
                         imagePreview
-                        
-                        // Action Buttons
-                        actionButtons
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 20)
@@ -131,36 +126,43 @@ struct CreateImageView: View {
     }
     
     private var imagePreview: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 0) {
             if let photo = currentPhoto {
-                // Generated Image Preview
-                generatedImageView(photo: photo)
-                    .aspectRatio(selectedFormat.aspectRatio, contentMode: .fit)
-                    .frame(maxWidth: .infinity)
-                    .cornerRadius(16)
-                    .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
-                
-                // Change Photo Button
-                Button {
-                    showPhotoPicker = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "photo")
-                            .font(.system(size: 16))
-                        Text("Change Photo")
-                            .font(.system(size: 15, weight: .medium))
+                // Generated Image Preview with Camera Button Overlay
+                GeometryReader { previewGeometry in
+                    ZStack(alignment: .topLeading) {
+                        generatedImageView(photo: photo)
+                            .aspectRatio(selectedFormat.aspectRatio, contentMode: .fit)
+                            .frame(width: previewGeometry.size.width, height: previewGeometry.size.height)
+                            .clipped()
+                            .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
+                        
+                        // Camera Button Overlay - positioned relative to actual image bounds
+                        Button {
+                            showPhotoPicker = true
+                        } label: {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                                .background(Color.black.opacity(0.6))
+                                .clipShape(Circle())
+                        }
+                        .offset(x: previewGeometry.size.width - 56, y: 12)
                     }
-                    .foregroundColor(.taqvoTextDark)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(Color.black.opacity(0.2))
-                    .cornerRadius(20)
                 }
+                .aspectRatio(selectedFormat.aspectRatio, contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .frame(maxHeight: 550)
                 .sheet(isPresented: $showPhotoPicker) {
                     PhotosPicker(selection: $newPhotoItem, matching: .images) {
                         Text("Select Photo")
                     }
                 }
+                
+                // Buttons below image
+                actionButtons
+                    .padding(.top, 16)
             } else {
                 // No Photo - Prompt to Upload
                 VStack(spacing: 16) {
@@ -194,9 +196,8 @@ struct CreateImageView: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 400)
+                .frame(height: 350)
                 .background(Color.black.opacity(0.2))
-                .cornerRadius(16)
                 .sheet(isPresented: $showPhotoPicker) {
                     PhotosPicker(selection: $newPhotoItem, matching: .images) {
                         Text("Select Photo")
@@ -207,7 +208,7 @@ struct CreateImageView: View {
     }
     
     private var actionButtons: some View {
-        VStack(spacing: 12) {
+        HStack(spacing: 12) {
             // Share Button
             Button {
                 shareImage()
@@ -225,7 +226,7 @@ struct CreateImageView: View {
                 }
                 .foregroundColor(.black)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 18)
+                .frame(height: 54)
                 .background(currentPhoto != nil ? Color.taqvoCTA : Color.gray.opacity(0.3))
                 .cornerRadius(14)
             }
@@ -238,12 +239,12 @@ struct CreateImageView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.down.circle.fill")
                         .font(.system(size: 18))
-                    Text("Save to Device")
+                    Text("Download")
                         .font(.system(size: 17, weight: .semibold))
                 }
                 .foregroundColor(.taqvoTextDark)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 18)
+                .frame(height: 54)
                 .background(currentPhoto != nil ? Color.black.opacity(0.2) : Color.gray.opacity(0.1))
                 .cornerRadius(14)
             }
@@ -255,24 +256,33 @@ struct CreateImageView: View {
     
     @ViewBuilder
     private func generatedImageView(photo: UIImage) -> some View {
-        ZStack(alignment: .bottomLeading) {
-            // Background Photo
-            Image(uiImage: photo)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: selectedFormat.size.width / 3, height: selectedFormat.size.height / 3)
-                .clipped()
-            
-            // Gradient Overlay
-            LinearGradient(
-                colors: [.clear, .black.opacity(0.8)],
-                startPoint: .center,
-                endPoint: .bottom
-            )
-            
-            // Stats Overlay
-            VStack(alignment: .leading, spacing: 12) {
-                // Taqvo Logo
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                // Background Photo
+                Image(uiImage: photo)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+                
+                // Top Gradient for Logo
+                LinearGradient(
+                    colors: [.black.opacity(0.6), .clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: geometry.size.width, height: geometry.size.height * 0.3)
+                
+                // Bottom Gradient for Metrics - starts at 50% height
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.7), .black.opacity(0.95)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: geometry.size.width, height: geometry.size.height * 0.5)
+                .offset(y: geometry.size.height * 0.5)
+                
+                // Taqvo Logo - Top Left (Absolute Position)
                 HStack(spacing: 6) {
                     Image(systemName: "figure.run")
                         .font(.system(size: 20, weight: .semibold))
@@ -281,41 +291,46 @@ struct CreateImageView: View {
                         .tracking(1.5)
                 }
                 .foregroundColor(.taqvoCTA)
+                .offset(x: 16, y: 16)
                 
-                // Activity Type
-                Text(activityTitle.isEmpty ? summary.kind.rawValue.uppercased() : activityTitle.uppercased())
-                    .font(.system(size: 32, weight: .heavy))
-                    .foregroundColor(.white)
-                
-                // Stats Row
-                HStack(spacing: 20) {
-                    statItem(
-                        value: String(format: "%.2f", summary.distanceMeters / 1000.0),
-                        unit: "km",
-                        label: "Distance"
-                    )
-                    
-                    statItem(
-                        value: formattedDuration(summary.durationSeconds),
-                        unit: "",
-                        label: "Duration"
-                    )
-                    
-                    statItem(
-                        value: String(format: "%.0f", summary.caloriesKilocalories),
-                        unit: "cal",
-                        label: "Calories"
-                    )
-                }
-                
-                // Route Line (decorative)
-                if selectedFormat == .stories {
+                // Stats Overlay - Bottom Left (Absolute Position)
+                VStack(alignment: .leading, spacing: 12) {
+                    // Route Line (decorative) - above title
                     routeLineDecoration()
-                        .frame(width: 80, height: 30)
+                        .frame(width: 100, height: 35)
                         .foregroundColor(.taqvoCTA)
+                    
+                    // Activity Type
+                    Text(activityTitle.isEmpty ? summary.kind.rawValue.uppercased() : activityTitle.uppercased())
+                        .font(.system(size: 32, weight: .heavy))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: geometry.size.width - 32, alignment: .leading)
+                    
+                    // Stats Row
+                    HStack(spacing: 16) {
+                        statItem(
+                            value: String(format: "%.2f", summary.distanceMeters / 1000.0),
+                            unit: "km",
+                            label: "Distance"
+                        )
+                        
+                        statItem(
+                            value: formattedDuration(summary.durationSeconds),
+                            unit: "",
+                            label: "Duration"
+                        )
+                        
+                        statItem(
+                            value: String(format: "%.0f", summary.caloriesKilocalories),
+                            unit: "cal",
+                            label: "Calories"
+                        )
+                    }
                 }
+                .offset(x: 16, y: geometry.size.height - 180)
             }
-            .padding(24)
         }
     }
     
