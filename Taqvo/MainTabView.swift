@@ -366,14 +366,24 @@ struct ActivityView: View {
                         provider = .apple
                         storedProviderString = MusicProvider.apple.rawValue
                     } label: {
-                        Label("Apple Music", systemImage: "music.note")
+                        HStack {
+                            Text("Apple Music")
+                            if provider == .apple {
+                                Image(systemName: "checkmark")
+                            }
+                        }
                     }
                     
                     Button {
                         provider = .spotify
                         storedProviderString = MusicProvider.spotify.rawValue
                     } label: {
-                        Label("Spotify", systemImage: "music.note.list")
+                        HStack {
+                            Text("Spotify")
+                            if provider == .spotify {
+                                Image(systemName: "checkmark")
+                            }
+                        }
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle.fill")
@@ -382,28 +392,80 @@ struct ActivityView: View {
                 }
             }
             
-            // Playlist Selection Button
-            if (provider == .apple && musicVM.isAuthorized) || (provider == .spotify && spotifyVM.isAuthorized) {
-                Button {
-                    if provider == .apple {
+            // Authorization or Playlist Selection
+            if provider == .apple {
+                if !musicVM.isAuthorized {
+                    Button {
+                        musicVM.requestAuthorization()
+                    } label: {
+                        HStack {
+                            Image(systemName: "lock.open.fill")
+                                .font(.system(size: 16))
+                            Text("Authorize Apple Music")
+                                .font(.system(size: 14, weight: .medium))
+                        }
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(12)
+                        .background(Color.taqvoCTA)
+                        .cornerRadius(12)
+                    }
+                } else {
+                    Button {
                         showPlaylistPicker = true
-                    } else {
+                    } label: {
+                        HStack {
+                            Image(systemName: "music.note.list")
+                                .font(.system(size: 16))
+                            Text(playlistButtonText)
+                                .font(.system(size: 14, weight: .medium))
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12))
+                        }
+                        .foregroundColor(.taqvoTextDark)
+                        .padding(12)
+                        .background(Color.black.opacity(0.2))
+                        .cornerRadius(12)
+                    }
+                }
+            } else {
+                if !spotifyVM.isAuthorized {
+                    Button {
+                        Task {
+                            await spotifyVM.authorize()
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: "lock.open.fill")
+                                .font(.system(size: 16))
+                            Text("Authorize Spotify")
+                                .font(.system(size: 14, weight: .medium))
+                        }
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(12)
+                        .background(Color.taqvoCTA)
+                        .cornerRadius(12)
+                    }
+                } else {
+                    Button {
                         showSpotifyPicker = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "music.note.list")
+                                .font(.system(size: 16))
+                            Text(playlistButtonText)
+                                .font(.system(size: 14, weight: .medium))
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12))
+                        }
+                        .foregroundColor(.taqvoTextDark)
+                        .padding(12)
+                        .background(Color.black.opacity(0.2))
+                        .cornerRadius(12)
                     }
-                } label: {
-                    HStack {
-                        Image(systemName: "music.note.list")
-                            .font(.system(size: 16))
-                        Text(playlistButtonText)
-                            .font(.system(size: 14, weight: .medium))
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 12))
-                    }
-                    .foregroundColor(.taqvoTextDark)
-                    .padding(12)
-                    .background(Color.black.opacity(0.2))
-                    .cornerRadius(12)
                 }
             }
         }
