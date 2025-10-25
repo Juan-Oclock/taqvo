@@ -394,33 +394,28 @@ struct OnboardingView: View {
             Color(red: 79/255, green: 79/255, blue: 79/255)
                 .ignoresSafeArea()
             
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Title
+            VStack(spacing: 0) {
+                // Title and description
+                VStack(spacing: 12) {
                     Text("Enable Permissions")
-                        .font(.system(size: 28, weight: .bold))
+                        .font(.system(size: 26, weight: .bold))
                         .foregroundColor(.white)
                         .padding(.top, 60)
                     
-                    Text("To provide the best experience, we need access to:")
-                        .font(.system(size: 15, weight: .regular))
+                    Text("To provide the best experience")
+                        .font(.system(size: 14, weight: .regular))
                         .foregroundColor(.white.opacity(0.7))
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                    
-                    Text("You can always set these later in Settings")
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundColor(.white.opacity(0.5))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                        .padding(.top, 4)
-                    
-                    VStack(spacing: 16) {
+                }
+                .padding(.horizontal, 32)
+                
+                // Permissions grid (2 columns)
+                ScrollView(showsIndicators: false) {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                         // Location permission
-                        PermissionCard(
+                        CompactPermissionCard(
                             icon: "location.fill",
                             title: "Location",
-                            description: "Required for route tracking",
                             isEnabled: appState.locationAuthorized,
                             action: {
                                 permissionsVM.requestLocationAuthorization()
@@ -428,10 +423,9 @@ struct OnboardingView: View {
                         )
                         
                         // Motion permission
-                        PermissionCard(
+                        CompactPermissionCard(
                             icon: "figure.walk",
-                            title: "Motion & Fitness",
-                            description: "Required for steps and cadence",
+                            title: "Motion",
                             isEnabled: appState.motionAuthorized,
                             action: {
                                 permissionsVM.requestMotionAuthorization { granted in
@@ -441,10 +435,9 @@ struct OnboardingView: View {
                         )
                         
                         // Background tracking permission
-                        PermissionCard(
+                        CompactPermissionCard(
                             icon: "location.circle.fill",
-                            title: "Background Tracking",
-                            description: "Allows tracking if screen locks or you switch apps",
+                            title: "Background",
                             isEnabled: appState.backgroundTrackingEnabled,
                             action: {
                                 permissionsVM.requestAlwaysAuthorization()
@@ -452,10 +445,9 @@ struct OnboardingView: View {
                         )
                         
                         // Notification permission
-                        PermissionCard(
+                        CompactPermissionCard(
                             icon: "bell.fill",
                             title: "Notifications",
-                            description: "Get reminders and activity updates",
                             isEnabled: permissionsVM.notificationAuthorized,
                             action: {
                                 permissionsVM.requestNotificationAuthorization()
@@ -463,10 +455,9 @@ struct OnboardingView: View {
                         )
                         
                         // Camera permission
-                        PermissionCard(
+                        CompactPermissionCard(
                             icon: "camera.fill",
                             title: "Camera",
-                            description: "Take photos during your activities",
                             isEnabled: permissionsVM.cameraAuthorized,
                             action: {
                                 permissionsVM.requestCameraAuthorization()
@@ -474,10 +465,9 @@ struct OnboardingView: View {
                         )
                         
                         // Calendar permission
-                        PermissionCard(
+                        CompactPermissionCard(
                             icon: "calendar",
                             title: "Calendar",
-                            description: "Schedule and track your workout plans",
                             isEnabled: permissionsVM.calendarAuthorized,
                             action: {
                                 permissionsVM.requestCalendarAuthorization()
@@ -485,9 +475,12 @@ struct OnboardingView: View {
                         )
                     }
                     .padding(.horizontal, 32)
-                    .padding(.top, 16)
-                    
-                    // Continue button
+                    .padding(.top, 24)
+                }
+                
+                // Bottom section with buttons
+                VStack(spacing: 12) {
+                    // Get Started button
                     Button(action: {
                         appState.hasCompletedOnboarding = true
                     }) {
@@ -495,24 +488,29 @@ struct OnboardingView: View {
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.black)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 56)
+                            .frame(height: 52)
                             .background(Color.taqvoCTA)
-                            .cornerRadius(28)
+                            .cornerRadius(26)
                     }
                     .padding(.horizontal, 32)
-                    .padding(.top, 24)
                     
                     // Skip button
                     Button(action: {
                         appState.hasCompletedOnboarding = true
                     }) {
                         Text("Skip for now")
-                            .font(.system(size: 15, weight: .medium))
+                            .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.white.opacity(0.7))
-                            .underline()
                     }
-                    .padding(.bottom, 40)
+                    
+                    // Helper text
+                    Text("You can always set these later in Settings")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(.white.opacity(0.4))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
                 }
+                .padding(.bottom, 40)
             }
         }
         .onAppear {
@@ -534,7 +532,60 @@ struct OnboardingView: View {
     }
 }
 
-// MARK: - Permission Card Component
+// MARK: - Compact Permission Card Component
+struct CompactPermissionCard: View {
+    let icon: String
+    let title: String
+    let isEnabled: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 12) {
+                // Icon
+                ZStack {
+                    Circle()
+                        .fill(isEnabled ? Color.taqvoCTA.opacity(0.2) : Color.white.opacity(0.05))
+                        .frame(width: 50, height: 50)
+                    
+                    Image(systemName: icon)
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundColor(isEnabled ? .taqvoCTA : .white.opacity(0.6))
+                }
+                
+                // Title
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(isEnabled ? .white : .white.opacity(0.7))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                
+                // Status indicator
+                if isEnabled {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.taqvoCTA)
+                } else {
+                    Text("Tap to enable")
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .padding(.horizontal, 8)
+            .background(isEnabled ? Color.taqvoCTA.opacity(0.1) : Color.black.opacity(0.2))
+            .cornerRadius(16)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(isEnabled ? Color.taqvoCTA.opacity(0.3) : Color.clear, lineWidth: 1)
+            )
+        }
+        .disabled(isEnabled)
+    }
+}
+
+// MARK: - Permission Card Component (Legacy)
 struct PermissionCard: View {
     let icon: String
     let title: String
