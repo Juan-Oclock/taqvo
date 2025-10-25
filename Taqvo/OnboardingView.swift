@@ -25,12 +25,16 @@ struct OnboardingView: View {
                 mainOnboardingPage
                     .tag(0)
                 
-                // Permissions page
-                permissionsPage
+                // Getting to know you page
+                GettingToKnowYouView(onComplete: {
+                    withAnimation {
+                        currentPage = 2
+                    }
+                })
                     .tag(1)
                 
-                // Getting to know you page
-                GettingToKnowYouView()
+                // Permissions page
+                permissionsPage
                     .tag(2)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
@@ -38,7 +42,7 @@ struct OnboardingView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .supabaseAuthStateChanged)) { _ in
             if supabaseAuth.isAuthenticated {
-                // advance to permissions after login
+                // advance to getting to know you after login
                 withAnimation {
                     currentPage = 1
                 }
@@ -404,6 +408,13 @@ struct OnboardingView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
                     
+                    Text("You can always set these later in Settings")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(.white.opacity(0.5))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                        .padding(.top, 4)
+                    
                     VStack(spacing: 16) {
                         // Location permission
                         PermissionCard(
@@ -439,17 +450,48 @@ struct OnboardingView: View {
                                 permissionsVM.requestAlwaysAuthorization()
                             }
                         )
+                        
+                        // Notification permission
+                        PermissionCard(
+                            icon: "bell.fill",
+                            title: "Notifications",
+                            description: "Get reminders and activity updates",
+                            isEnabled: permissionsVM.notificationAuthorized,
+                            action: {
+                                permissionsVM.requestNotificationAuthorization()
+                            }
+                        )
+                        
+                        // Camera permission
+                        PermissionCard(
+                            icon: "camera.fill",
+                            title: "Camera",
+                            description: "Take photos during your activities",
+                            isEnabled: permissionsVM.cameraAuthorized,
+                            action: {
+                                permissionsVM.requestCameraAuthorization()
+                            }
+                        )
+                        
+                        // Calendar permission
+                        PermissionCard(
+                            icon: "calendar",
+                            title: "Calendar",
+                            description: "Schedule and track your workout plans",
+                            isEnabled: permissionsVM.calendarAuthorized,
+                            action: {
+                                permissionsVM.requestCalendarAuthorization()
+                            }
+                        )
                     }
                     .padding(.horizontal, 32)
                     .padding(.top, 16)
                     
                     // Continue button
                     Button(action: {
-                        withAnimation {
-                            currentPage = 2
-                        }
+                        appState.hasCompletedOnboarding = true
                     }) {
-                        Text(appState.allRequiredPermissionsGranted ? "Continue" : "Continue anyway")
+                        Text("Get Started")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.black)
                             .frame(maxWidth: .infinity)
@@ -462,9 +504,7 @@ struct OnboardingView: View {
                     
                     // Skip button
                     Button(action: {
-                        withAnimation {
-                            currentPage = 2
-                        }
+                        appState.hasCompletedOnboarding = true
                     }) {
                         Text("Skip for now")
                             .font(.system(size: 15, weight: .medium))
@@ -479,6 +519,11 @@ struct OnboardingView: View {
             appState.locationAuthorized = permissionsVM.locationAuthorizedState
             appState.motionAuthorized = PermissionsViewModel.motionAuthorized()
             appState.backgroundTrackingEnabled = permissionsVM.alwaysAuthorizedState
+            
+            // Check new permissions
+            permissionsVM.checkNotificationAuthorization()
+            permissionsVM.checkCameraAuthorization()
+            permissionsVM.checkCalendarAuthorization()
         }
         .onReceive(permissionsVM.$locationAuthorizedState) { authorized in
             appState.locationAuthorized = authorized

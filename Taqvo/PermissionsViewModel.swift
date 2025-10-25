@@ -9,11 +9,17 @@ import Foundation
 import CoreLocation
 import CoreMotion
 import HealthKit
+import UserNotifications
+import AVFoundation
+import EventKit
 
 final class PermissionsViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var isRequesting: Bool = false
     @Published var locationAuthorizedState: Bool = PermissionsViewModel.locationAuthorized()
     @Published var alwaysAuthorizedState: Bool = PermissionsViewModel.alwaysAuthorized()
+    @Published var notificationAuthorized: Bool = false
+    @Published var cameraAuthorized: Bool = false
+    @Published var calendarAuthorized: Bool = false
 
     private let locationManager = CLLocationManager()
     private let pedometer = CMPedometer()
@@ -139,6 +145,56 @@ final class PermissionsViewModel: NSObject, ObservableObject, CLLocationManagerD
                 let granted = HKHealthStore().authorizationStatus(for: HKObjectType.workoutType()) == .sharingAuthorized
                 completion(success && granted)
             }
+        }
+    }
+    
+    // MARK: - Notifications
+    func requestNotificationAuthorization() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+            DispatchQueue.main.async {
+                self.notificationAuthorized = granted
+            }
+        }
+    }
+    
+    func checkNotificationAuthorization() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            DispatchQueue.main.async {
+                self.notificationAuthorized = settings.authorizationStatus == .authorized
+            }
+        }
+    }
+    
+    // MARK: - Camera
+    func requestCameraAuthorization() {
+        AVCaptureDevice.requestAccess(for: .video) { granted in
+            DispatchQueue.main.async {
+                self.cameraAuthorized = granted
+            }
+        }
+    }
+    
+    func checkCameraAuthorization() {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        DispatchQueue.main.async {
+            self.cameraAuthorized = status == .authorized
+        }
+    }
+    
+    // MARK: - Calendar
+    func requestCalendarAuthorization() {
+        let eventStore = EKEventStore()
+        eventStore.requestAccess(to: .event) { granted, _ in
+            DispatchQueue.main.async {
+                self.calendarAuthorized = granted
+            }
+        }
+    }
+    
+    func checkCalendarAuthorization() {
+        let status = EKEventStore.authorizationStatus(for: .event)
+        DispatchQueue.main.async {
+            self.calendarAuthorized = status == .authorized
         }
     }
 }

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct GettingToKnowYouView: View {
     @EnvironmentObject var appState: AppState
+    var onComplete: () -> Void = {}
     @State private var name: String = ""
     @State private var birthdate: Date = Calendar.current.date(byAdding: .year, value: -25, to: Date()) ?? Date()
     @State private var location: String = ""
@@ -609,8 +610,8 @@ struct GettingToKnowYouView: View {
             // Back/Skip button
             Button(action: {
                 if currentStep == 0 {
-                    // Skip all
-                    appState.hasCompletedOnboarding = true
+                    // Skip to permissions
+                    onComplete()
                 } else {
                     withAnimation(.spring(response: 0.3)) {
                         currentStep -= 1
@@ -655,8 +656,8 @@ struct GettingToKnowYouView: View {
         // Save frequency
         UserDefaults.standard.set(frequencyPerWeek, forKey: "defaultFrequencyPerWeek")
         
-        // Complete onboarding
-        appState.hasCompletedOnboarding = true
+        // Navigate to permissions page
+        onComplete()
     }
     
     // MARK: - Date Picker Sheet
