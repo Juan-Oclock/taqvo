@@ -140,9 +140,7 @@ struct CreateImageView: View {
         HStack(spacing: 12) {
             ForEach(ImageFormat.allCases, id: \.self) { format in
                 Button {
-                    withAnimation(.spring(response: 0.3)) {
-                        selectedFormat = format
-                    }
+                    selectedFormat = format
                 } label: {
                     Text(format.rawValue)
                         .font(.system(size: 15, weight: selectedFormat == format ? .semibold : .regular))
@@ -152,6 +150,7 @@ struct CreateImageView: View {
                         .background(selectedFormat == format ? Color.taqvoCTA : Color.black.opacity(0.2))
                         .cornerRadius(10)
                 }
+                .buttonStyle(PlainButtonStyle())
             }
         }
     }
@@ -333,7 +332,7 @@ struct CreateImageView: View {
                     
                     // Activity Type
                     Text(activityTitle.isEmpty ? summary.kind.rawValue.uppercased() : activityTitle.uppercased())
-                        .font(.system(size: 32, weight: .heavy))
+                        .font(.system(size: 28, weight: .heavy))
                         .foregroundColor(.white)
                         .lineLimit(2)
                         .minimumScaleFactor(0.8)
