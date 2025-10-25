@@ -414,8 +414,8 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
         
         // Calculate average stride (distance per step)
         let avgStride: Double? = {
-            guard let steps = totalSteps, steps > 0, distanceMeters > 0 else { return nil }
-            return distanceMeters / Double(steps)
+            guard totalSteps > 0, distanceMeters > 0 else { return nil }
+            return distanceMeters / Double(totalSteps)
         }()
         
         let totalCals = estimateCalories()
