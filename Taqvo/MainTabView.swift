@@ -100,6 +100,7 @@ struct ActivityView: View {
     @StateObject private var spotifyVM = SpotifyViewModel()
     @State private var showPlaylistPicker: Bool = false
     @State private var showSpotifyPicker: Bool = false
+    @State private var provider: MusicProvider = .spotify
 
     enum ActivityType: String, CaseIterable { 
         case walk
@@ -167,6 +168,17 @@ struct ActivityView: View {
                         .padding(.horizontal, 16)
                     
                     currentGoalDisplayCard
+                        .padding(.horizontal, 16)
+                }
+                
+                // Music Section
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Music")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.taqvoAccentText)
+                        .padding(.horizontal, 16)
+                    
+                    musicSelectionCard
                         .padding(.horizontal, 16)
                 }
                 
@@ -320,6 +332,99 @@ struct ActivityView: View {
             return "\(frequencyPerWeek)x/week, \(String(format: "%.1f", distanceKilometers))km each"
         case .time:
             return "\(frequencyPerWeek)x/week, \(timeMinutes)min each"
+        }
+    }
+    
+    // MARK: - Music Selection Card
+    private var musicSelectionCard: some View {
+        VStack(spacing: 16) {
+            // Music Provider Selection
+            HStack(spacing: 12) {
+                Image(systemName: provider == .apple ? "music.note" : "music.note.list")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundColor(.taqvoCTA)
+                    .frame(width: 40, height: 40)
+                    .background(Color.taqvoCTA.opacity(0.15))
+                    .cornerRadius(20)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(provider == .apple ? "Apple Music" : "Spotify")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.taqvoTextDark)
+                    
+                    Text(musicStatusText)
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(.taqvoAccentText)
+                        .lineLimit(1)
+                }
+                
+                Spacer()
+                
+                // Provider Toggle
+                Menu {
+                    Button {
+                        provider = .apple
+                        storedProviderString = MusicProvider.apple.rawValue
+                    } label: {
+                        Label("Apple Music", systemImage: "music.note")
+                    }
+                    
+                    Button {
+                        provider = .spotify
+                        storedProviderString = MusicProvider.spotify.rawValue
+                    } label: {
+                        Label("Spotify", systemImage: "music.note.list")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle.fill")
+                        .font(.system(size: 28))
+                        .foregroundColor(.taqvoCTA)
+                }
+            }
+            
+            // Playlist Selection Button
+            if (provider == .apple && musicVM.isAuthorized) || (provider == .spotify && spotifyVM.isAuthorized) {
+                Button {
+                    if provider == .apple {
+                        showPlaylistPicker = true
+                    } else {
+                        showSpotifyPicker = true
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: "music.note.list")
+                            .font(.system(size: 16))
+                        Text(playlistButtonText)
+                            .font(.system(size: 14, weight: .medium))
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12))
+                    }
+                    .foregroundColor(.taqvoTextDark)
+                    .padding(12)
+                    .background(Color.black.opacity(0.2))
+                    .cornerRadius(12)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(16)
+    }
+    
+    private var musicStatusText: String {
+        if provider == .apple {
+            return musicVM.isAuthorized ? (musicVM.currentPlaylistName.isEmpty ? "Ready to play" : musicVM.currentPlaylistName) : "Not authorized"
+        } else {
+            return spotifyVM.isAuthorized ? (spotifyVM.currentPlaylistName.isEmpty ? "Ready to play" : spotifyVM.currentPlaylistName) : "Not authorized"
+        }
+    }
+    
+    private var playlistButtonText: String {
+        if provider == .apple {
+            return musicVM.currentPlaylistName.isEmpty ? "Select Playlist" : "Change Playlist"
+        } else {
+            return spotifyVM.currentPlaylistName.isEmpty ? "Select Playlist" : "Change Playlist"
         }
     }
     
@@ -704,6 +809,9 @@ struct ActivityView: View {
                 goal = Goal(rawValue: storedGoalType) ?? .none
                 timeMinutes = max(5, min(180, Int(storedGoalTimeSeconds / 60)))
                 distanceKilometers = max(1.0, min(42.2, storedGoalDistanceMeters / 1000.0))
+                
+                // Load music provider
+                provider = MusicProvider(rawValue: storedProviderString) ?? .spotify
                 
                 // Load frequency from onboarding preferences
                 if let savedFrequency = UserDefaults.standard.object(forKey: "defaultFrequencyPerWeek") as? Int {
