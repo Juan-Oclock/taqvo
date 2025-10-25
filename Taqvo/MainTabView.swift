@@ -799,21 +799,31 @@ struct ActivityView: View {
                     .font(.system(size: 24, weight: .semibold))
                     .foregroundColor(.taqvoTextDark)
                 
-                ZStack {
-                    Circle()
-                        .stroke(Color.gray.opacity(0.2), lineWidth: 8)
-                        .frame(width: 200, height: 200)
+                VStack(spacing: 20) {
+                    ZStack {
+                        Circle()
+                            .stroke(Color.gray.opacity(0.2), lineWidth: 8)
+                            .frame(width: 200, height: 200)
+                        
+                        Circle()
+                            .trim(from: 0, to: CGFloat(6 - countdownValue) / 5)
+                            .stroke(Color.taqvoCTA, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                            .frame(width: 200, height: 200)
+                            .rotationEffect(.degrees(-90))
+                            .animation(.linear(duration: 1), value: countdownValue)
+                        
+                        Text("\(countdownValue)")
+                            .font(.system(size: 80, weight: .bold))
+                            .foregroundColor(.taqvoCTA)
+                    }
                     
-                    Circle()
-                        .trim(from: 0, to: CGFloat(4 - countdownValue) / 3)
-                        .stroke(Color.taqvoCTA, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                        .frame(width: 200, height: 200)
-                        .rotationEffect(.degrees(-90))
-                        .animation(.linear(duration: 1), value: countdownValue)
-                    
-                    Text("\(countdownValue)")
-                        .font(.system(size: 80, weight: .bold))
-                        .foregroundColor(.taqvoCTA)
+                    // "Get", "Set", "Taqvo" labels
+                    if countdownValue <= 3 {
+                        Text(countdownLabel)
+                            .font(.system(size: 32, weight: .bold))
+                            .foregroundColor(.taqvoCTA)
+                            .transition(.scale.combined(with: .opacity))
+                    }
                 }
                 
                 Text(activityType.rawValue.capitalized)
@@ -840,6 +850,15 @@ struct ActivityView: View {
     
     // MARK: - Helper Functions
     
+    private var countdownLabel: String {
+        switch countdownValue {
+        case 3: return "Get"
+        case 2: return "Set"
+        case 1: return "Taqvo"
+        default: return ""
+        }
+    }
+    
     private func prepareAndStartCountdown() {
         // Map selected type into tracking kind
         switch activityType {
@@ -864,7 +883,7 @@ struct ActivityView: View {
         
         withAnimation {
             showCountdown = true
-            countdownValue = 3
+            countdownValue = 5
         }
     }
     
@@ -885,7 +904,7 @@ struct ActivityView: View {
     private func cancelCountdown() {
         withAnimation {
             showCountdown = false
-            countdownValue = 3
+            countdownValue = 5
         }
     }
 
