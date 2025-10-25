@@ -219,7 +219,7 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
     }
 
     func stop() {
-        guard isRunning else { return }
+        // Allow stop to reset state even if not currently running (e.g., if paused)
         isRunning = false
         locationManager.stopUpdatingLocation()
         locationManager.allowsBackgroundLocationUpdates = false
