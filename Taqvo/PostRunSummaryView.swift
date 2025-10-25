@@ -220,20 +220,40 @@ struct PostRunSummaryView: View {
     }
     
     private var actionButtons: some View {
-        Button {
-            Task { await handleContinueTap() }
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "arrow.right.circle.fill")
-                    .font(.system(size: 18))
-                Text("Continue")
-                    .font(.system(size: 17, weight: .semibold))
+        HStack(spacing: 12) {
+            // Continue Button
+            Button {
+                Task { await handleContinueTap() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.system(size: 18))
+                    Text("Continue")
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(Color.taqvoCTA)
+                .cornerRadius(14)
             }
-            .foregroundColor(.black)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 18)
-            .background(Color.taqvoCTA)
-            .cornerRadius(14)
+            
+            // Done Button
+            Button {
+                Task { await handleDoneTap() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 18))
+                    Text("Done")
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                .foregroundColor(.taqvoTextDark)
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(Color.black.opacity(0.2))
+                .cornerRadius(14)
+            }
         }
         .sheet(isPresented: $showCreateImage) {
             CreateImageView(
@@ -433,6 +453,28 @@ struct PostRunSummaryView: View {
         
         // Show create image view
         showCreateImage = true
+    }
+    
+    @MainActor
+    private func handleDoneTap() async {
+        if saveToHealth && health.authorized {
+            let ok = await health.save(summary: summary)
+            healthSaveMessage = ok ? "Saved to Health" : "Health save failed"
+        }
+        // Attempt to fetch average heart rate for intensity if authorized
+        let avgHR = health.authorized ? await health.averageHeartRateBPM(start: summary.startDate, end: summary.endDate) : nil
+        let trimmedTitle = activityTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let passedTitle = trimmedTitle.isEmpty ? nil : trimmedTitle
+        store.add(summary: summary,
+                  snapshot: snapshot,
+                  note: note.isEmpty ? nil : note,
+                  photo: selectedPhoto,
+                  avgHeartRateBPM: avgHR,
+                  title: passedTitle,
+                  visibility: selectedVisibility)
+        
+        // Dismiss to Feed
+        dismiss()
     }
 }
 
