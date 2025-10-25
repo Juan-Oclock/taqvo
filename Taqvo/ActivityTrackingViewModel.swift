@@ -42,8 +42,13 @@ struct ActivitySummary {
     let endDate: Date
     let kind: ActivityKind
     let caloriesKilocalories: Double
+    let activeCaloriesKilocalories: Double
     let stepsCount: Int?
     let elevationGainMeters: Double?
+    let elevationLossMeters: Double?
+    let avgCadenceSPM: Double?
+    let avgHeartRateBPM: Double?
+    let avgStrideMeters: Double?
     // Challenge metadata (optional)
     let linkedChallengeTitle: String?
     let linkedChallengeIsPublic: Bool?
@@ -56,8 +61,13 @@ struct ActivitySummary {
          endDate: Date,
          kind: ActivityKind,
          caloriesKilocalories: Double,
+         activeCaloriesKilocalories: Double,
          stepsCount: Int? = nil,
          elevationGainMeters: Double? = nil,
+         elevationLossMeters: Double? = nil,
+         avgCadenceSPM: Double? = nil,
+         avgHeartRateBPM: Double? = nil,
+         avgStrideMeters: Double? = nil,
          linkedChallengeTitle: String? = nil,
          linkedChallengeIsPublic: Bool? = nil) {
         self.distanceMeters = distanceMeters
@@ -68,8 +78,13 @@ struct ActivitySummary {
         self.endDate = endDate
         self.kind = kind
         self.caloriesKilocalories = caloriesKilocalories
+        self.activeCaloriesKilocalories = activeCaloriesKilocalories
         self.stepsCount = stepsCount
         self.elevationGainMeters = elevationGainMeters
+        self.elevationLossMeters = elevationLossMeters
+        self.avgCadenceSPM = avgCadenceSPM
+        self.avgHeartRateBPM = avgHeartRateBPM
+        self.avgStrideMeters = avgStrideMeters
         self.linkedChallengeTitle = linkedChallengeTitle
         self.linkedChallengeIsPublic = linkedChallengeIsPublic
     }
@@ -91,10 +106,15 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
     // Live metrics
     @Published var currentCadenceSPM: Double? = nil
     @Published var elevationGainMeters: Double = 0
+    @Published var elevationLossMeters: Double = 0
     // In-run markers
     @Published var markers: [ActivityMarker] = []
     // Live steps
     @Published var totalSteps: Int = 0
+    
+    // Tracking for averages
+    private var cadenceSamples: [Double] = []
+    private var heartRateSamples: [Double] = []
 
     private let locationManager = CLLocationManager()
     private var locations: [CLLocation] = []
@@ -180,9 +200,12 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
         distanceMeters = 0
         durationSeconds = 0
         elevationGainMeters = 0
+        elevationLossMeters = 0
         lastAltitude = nil
         markers = []
         totalSteps = 0
+        cadenceSamples = []
+        heartRateSamples = []
         startDate = Date()
         isRunning = true
         goalReached = false
@@ -273,12 +296,16 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
                     haptic.notificationOccurred(.success)
                     nextHapticMeters += 1000
                 }
-                // Elevation gain (only count positive delta with decent vertical accuracy)
+                // Elevation gain/loss (only count with decent vertical accuracy)
                 let vAcc = loc.verticalAccuracy
                 if vAcc >= 0 && vAcc <= 10 { // reasonably accurate
                     if let la = lastAltitude {
                         let deltaAlt = loc.altitude - la
-                        if deltaAlt > minElevationDeltaMeters { elevationGainMeters += deltaAlt }
+                        if deltaAlt > minElevationDeltaMeters { 
+                            elevationGainMeters += deltaAlt 
+                        } else if deltaAlt < -minElevationDeltaMeters {
+                            elevationLossMeters += abs(deltaAlt)
+                        }
                     }
                     lastAltitude = loc.altitude
                 }
@@ -380,6 +407,20 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
                         longitude: loc.coordinate.longitude,
                         timestamp: loc.timestamp)
         }
+        
+        // Calculate averages
+        let avgCadence = cadenceSamples.isEmpty ? nil : cadenceSamples.reduce(0, +) / Double(cadenceSamples.count)
+        let avgHeartRate = heartRateSamples.isEmpty ? nil : heartRateSamples.reduce(0, +) / Double(heartRateSamples.count)
+        
+        // Calculate average stride (distance per step)
+        let avgStride: Double? = {
+            guard let steps = totalSteps, steps > 0, distanceMeters > 0 else { return nil }
+            return distanceMeters / Double(steps)
+        }()
+        
+        let totalCals = estimateCalories()
+        let activeCals = totalCals * 0.85 // Active calories ~85% of total
+        
         return ActivitySummary(
             distanceMeters: distanceMeters,
             durationSeconds: durationSeconds,
@@ -388,9 +429,14 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
             startDate: startDate ?? Date(),
             endDate: Date(),
             kind: activityKind,
-            caloriesKilocalories: estimateCalories(),
+            caloriesKilocalories: totalCals,
+            activeCaloriesKilocalories: activeCals,
             stepsCount: (totalSteps > 0 ? totalSteps : nil),
-            elevationGainMeters: (elevationGainMeters > 0 ? elevationGainMeters : nil)
+            elevationGainMeters: (elevationGainMeters > 0 ? elevationGainMeters : nil),
+            elevationLossMeters: (elevationLossMeters > 0 ? elevationLossMeters : nil),
+            avgCadenceSPM: avgCadence,
+            avgHeartRateBPM: avgHeartRate,
+            avgStrideMeters: avgStride
         )
     }
 
@@ -501,7 +547,12 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
         if let start = startDate {
             pedometer.startUpdates(from: start) { [weak self] data, _ in
                 guard let self = self, let d = data else { return }
-                if let cadence = d.currentCadence?.doubleValue { self.currentCadenceSPM = cadence * 60.0 }
+                if let cadence = d.currentCadence?.doubleValue { 
+                    let cadenceSPM = cadence * 60.0
+                    self.currentCadenceSPM = cadenceSPM
+                    // Store sample for averaging
+                    self.cadenceSamples.append(cadenceSPM)
+                }
                 let steps = d.numberOfSteps.intValue
                 self.totalSteps = max(steps, 0)
             }
@@ -543,10 +594,39 @@ extension ActivitySummary {
             endDate: self.endDate,
             kind: self.kind,
             caloriesKilocalories: self.caloriesKilocalories,
+            activeCaloriesKilocalories: self.activeCaloriesKilocalories,
             stepsCount: self.stepsCount,
             elevationGainMeters: self.elevationGainMeters,
+            elevationLossMeters: self.elevationLossMeters,
+            avgCadenceSPM: self.avgCadenceSPM,
+            avgHeartRateBPM: self.avgHeartRateBPM,
+            avgStrideMeters: self.avgStrideMeters,
             linkedChallengeTitle: title,
             linkedChallengeIsPublic: isPublic
         )
+    }
+    
+    // Computed properties for formatted metrics
+    var formattedAvgPace: String {
+        guard distanceMeters > 1, durationSeconds > 0 else { return "--" }
+        let paceSecPerKm = durationSeconds / (distanceMeters / 1000.0)
+        let minutes = Int(paceSecPerKm) / 60
+        let seconds = Int(paceSecPerKm) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+    
+    var formattedAvgSpeed: String {
+        guard distanceMeters > 0, durationSeconds > 0 else { return "--" }
+        let speedKmh = (distanceMeters / 1000.0) / (durationSeconds / 3600.0)
+        return String(format: "%.1f km/h", speedKmh)
+    }
+    
+    var formattedDuration: String {
+        let s = Int(durationSeconds)
+        let h = s / 3600
+        let m = (s % 3600) / 60
+        let sec = s % 60
+        if h > 0 { return String(format: "%d:%02d:%02d", h, m, sec) }
+        return String(format: "%02d:%02d", m, sec)
     }
 }
