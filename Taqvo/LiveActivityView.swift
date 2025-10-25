@@ -582,62 +582,54 @@ struct LiveActivityView: View {
             }
             
             if showMetricsPanel {
-                HStack(spacing: 12) {
-                    VStack(spacing: 8) {
-                        Image(systemName: "figure.walk")
-                            .font(.system(size: 18))
-                            .foregroundColor(.taqvoCTA)
-                        Text(vm.currentCadenceSPM.map { String(format: "%.0f", $0) } ?? "—")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(.taqvoTextDark)
-                        Text("spm")
-                            .font(.system(size: 11))
-                            .foregroundColor(.taqvoAccentText)
-                        Text("Cadence")
-                            .font(.system(size: 11))
-                            .foregroundColor(.taqvoAccentText)
+                VStack(spacing: 12) {
+                    // Row 1: Cadence, Steps, Calories
+                    HStack(spacing: 12) {
+                        metricCard(
+                            icon: "figure.walk",
+                            value: vm.currentCadenceSPM.map { String(format: "%.0f", $0) } ?? "—",
+                            unit: "spm",
+                            label: "Cadence"
+                        )
+                        
+                        metricCard(
+                            icon: "shoeprints.fill",
+                            value: String(vm.totalSteps),
+                            unit: nil,
+                            label: "Steps"
+                        )
+                        
+                        metricCard(
+                            icon: "flame.fill",
+                            value: String(format: "%.0f", estimatedCalories()),
+                            unit: "kcal",
+                            label: "Calories"
+                        )
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Color.black.opacity(0.2))
-                    .cornerRadius(12)
                     
-                    VStack(spacing: 8) {
-                        Image(systemName: "shoeprints.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(.taqvoCTA)
-                        Text(String(vm.totalSteps))
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(.taqvoTextDark)
-                        Text("")
-                            .font(.system(size: 11))
-                        Text("Steps")
-                            .font(.system(size: 11))
-                            .foregroundColor(.taqvoAccentText)
+                    // Row 2: Elevation Gain, Elevation Loss, Speed
+                    HStack(spacing: 12) {
+                        metricCard(
+                            icon: "mountain.2.fill",
+                            value: String(format: "%.0f", max(0, vm.elevationGainMeters)),
+                            unit: "m",
+                            label: "Ascent"
+                        )
+                        
+                        metricCard(
+                            icon: "arrow.down.right",
+                            value: String(format: "%.0f", max(0, vm.elevationLossMeters)),
+                            unit: "m",
+                            label: "Descent"
+                        )
+                        
+                        metricCard(
+                            icon: "gauge.with.dots.needle.67percent",
+                            value: currentSpeed(),
+                            unit: "km/h",
+                            label: "Speed"
+                        )
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Color.black.opacity(0.2))
-                    .cornerRadius(12)
-                    
-                    VStack(spacing: 8) {
-                        Image(systemName: "mountain.2.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(.taqvoCTA)
-                        Text(String(format: "%.0f", max(0, vm.elevationGainMeters)))
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(.taqvoTextDark)
-                        Text("m")
-                            .font(.system(size: 11))
-                            .foregroundColor(.taqvoAccentText)
-                        Text("Elevation")
-                            .font(.system(size: 11))
-                            .foregroundColor(.taqvoAccentText)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Color.black.opacity(0.2))
-                    .cornerRadius(12)
                 }
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -747,6 +739,63 @@ struct LiveActivityView: View {
         let sec = s % 60
         if h > 0 { return String(format: "%d:%02d:%02d", h, m, sec) }
         return String(format: "%02d:%02d", m, sec)
+    }
+    
+    // MARK: - Metric Card Helper
+    
+    @ViewBuilder
+    private func metricCard(icon: String, value: String, unit: String?, label: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 18))
+                .foregroundColor(.taqvoCTA)
+            
+            Text(value)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(.taqvoTextDark)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            
+            if let unit = unit {
+                Text(unit)
+                    .font(.system(size: 11))
+                    .foregroundColor(.taqvoAccentText)
+            } else {
+                Text("")
+                    .font(.system(size: 11))
+            }
+            
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundColor(.taqvoAccentText)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(12)
+    }
+    
+    // MARK: - Metric Calculations
+    
+    private func estimatedCalories() -> Double {
+        let met: Double
+        switch vm.activityKind {
+        case .walk: met = 3.5
+        case .run: met = 9.8
+        case .trailRun: met = 7.5
+        case .hiking: met = 6.0
+        }
+        let weightKg: Double = 70
+        let minutes = max(vm.durationSeconds, 0) / 60.0
+        let kcal = met * 3.5 * weightKg / 200.0 * minutes
+        return max(kcal, 0)
+    }
+    
+    private func currentSpeed() -> String {
+        guard vm.distanceMeters > 0, vm.durationSeconds > 0 else { return "—" }
+        let speedKmh = (vm.distanceMeters / 1000.0) / (vm.durationSeconds / 3600.0)
+        return String(format: "%.1f", speedKmh)
     }
 }
 
