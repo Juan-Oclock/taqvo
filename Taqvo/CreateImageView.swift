@@ -407,10 +407,28 @@ struct CreateImageView: View {
             applicationActivities: nil
         )
         
+        // Configure for bottom sheet presentation on iPhone
+        activityVC.modalPresentationStyle = .pageSheet
+        
+        // For iPad, set popover presentation
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let rootVC = windowScene.windows.first?.rootViewController {
-            activityVC.popoverPresentationController?.sourceView = rootVC.view
-            rootVC.present(activityVC, animated: true)
+           let window = windowScene.windows.first,
+           let rootVC = window.rootViewController {
+            
+            // Find the topmost presented view controller
+            var topVC = rootVC
+            while let presented = topVC.presentedViewController {
+                topVC = presented
+            }
+            
+            // Configure popover for iPad
+            if let popover = activityVC.popoverPresentationController {
+                popover.sourceView = topVC.view
+                popover.sourceRect = CGRect(x: topVC.view.bounds.midX, y: topVC.view.bounds.midY, width: 0, height: 0)
+                popover.permittedArrowDirections = []
+            }
+            
+            topVC.present(activityVC, animated: true)
         }
     }
     
