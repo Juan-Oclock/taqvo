@@ -30,6 +30,7 @@ struct LiveActivityView: View {
     @State private var markerNote: String = ""
     @State private var markerPhotoItem: PhotosPickerItem? = nil
     @State private var markerPhoto: UIImage? = nil
+    @State private var showMiniPlayer: Bool = false
 
     var body: some View {
         ZStack {
@@ -67,6 +68,11 @@ struct LiveActivityView: View {
         }
         .sheet(isPresented: $showAddMarkerSheet) {
             addMarkerSheet
+        }
+        .sheet(isPresented: $showMiniPlayer) {
+            MiniMusicPlayerView(musicVM: musicVM, spotifyVM: spotifyVM)
+                .presentationDetents([.height(350)])
+                .presentationDragIndicator(.visible)
         }
         .onChange(of: markerPhotoItem) { _, item in
             guard let item = item else { return }
@@ -113,36 +119,57 @@ struct LiveActivityView: View {
     // MARK: - Modern View Components
     
     private var modernHeaderSection: some View {
-        HStack {
-            Button {
-                dismiss()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("Back")
-                        .font(.system(size: 17))
+        VStack(spacing: 0) {
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("Back")
+                            .font(.system(size: 17))
+                    }
+                    .foregroundColor(.taqvoCTA)
                 }
-                .foregroundColor(.taqvoCTA)
+                
+                Spacer()
+                
+                VStack(spacing: 2) {
+                    Text("Live Activity")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.taqvoTextDark)
+                    
+                    // Challenge indicator
+                    if let challenge = appState.linkedChallengeTitle, !challenge.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "flag.2.crossed.fill")
+                                .font(.system(size: 10))
+                            Text(challenge)
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .foregroundColor(.taqvoCTA)
+                        .lineLimit(1)
+                    }
+                }
+                
+                Spacer()
+                
+                // Music button
+                Button {
+                    showMiniPlayer = true
+                } label: {
+                    Image(systemName: "music.note")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(musicVM.isPlaying || spotifyVM.isPlaying ? .taqvoCTA : .taqvoAccentText)
+                        .frame(width: 40, height: 40)
+                        .background(Color.black.opacity(0.2))
+                        .clipShape(Circle())
+                }
             }
-            
-            Spacer()
-            
-            Text("Live Activity")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(.taqvoTextDark)
-            
-            Spacer()
-            
-            // Invisible spacer
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.left")
-                Text("Back")
-            }
-            .opacity(0)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
     }
     
     @ViewBuilder
