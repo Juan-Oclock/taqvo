@@ -67,29 +67,11 @@ class WeatherViewModel: ObservableObject {
     private var mockTemperature: Int?
     
     var weatherConditionIcon: String {
-        // Use mock data if available
-        if let mockCondition = mockWeatherCondition {
-            switch mockCondition {
+        // Prefer real weather data over mock
+        if let condition = currentWeather?.currentWeather.condition {
+            switch condition {
             case .clear:
                 return "sun.max.fill"
-            case .cloudy:
-                return "cloud.fill"
-            case .partlyCloudy:
-                return "cloud.sun.fill"
-            case .rain:
-                return "cloud.rain.fill"
-            default:
-                return "cloud.fill"
-            }
-        }
-        
-        guard let condition = currentWeather?.currentWeather.condition else {
-            return "cloud.fill"
-        }
-        
-        switch condition {
-        case .clear:
-            return "sun.max.fill"
         case .cloudy:
             return "cloud.fill"
         case .mostlyClear:
@@ -119,32 +101,33 @@ class WeatherViewModel: ObservableObject {
         default:
             return "cloud.fill"
         }
-    }
-    
-    var weatherConditionText: String {
-        // Use mock data if available
+        }
+        
+        // Fallback to mock data if no real weather
         if let mockCondition = mockWeatherCondition {
             switch mockCondition {
             case .clear:
-                return "Clear"
+                return "sun.max.fill"
             case .cloudy:
-                return "Cloudy"
+                return "cloud.fill"
             case .partlyCloudy:
-                return "Partly Cloudy"
+                return "cloud.sun.fill"
             case .rain:
-                return "Rain"
+                return "cloud.rain.fill"
             default:
-                return "Clear"
+                return "cloud.fill"
             }
         }
         
-        guard let condition = currentWeather?.currentWeather.condition else {
-            return "Loading..."
-        }
-        
-        switch condition {
-        case .clear:
-            return "Clear"
+        return "cloud.fill"
+    }
+    
+    var weatherConditionText: String {
+        // Prefer real weather data over mock
+        if let condition = currentWeather?.currentWeather.condition {
+            switch condition {
+            case .clear:
+                return "Clear"
         case .cloudy:
             return "Cloudy"
         case .mostlyClear:
@@ -174,18 +157,39 @@ class WeatherViewModel: ObservableObject {
         default:
             return condition.description
         }
+        }
+        
+        // Fallback to mock data if no real weather
+        if let mockCondition = mockWeatherCondition {
+            switch mockCondition {
+            case .clear:
+                return "Clear"
+            case .cloudy:
+                return "Cloudy"
+            case .partlyCloudy:
+                return "Partly Cloudy"
+            case .rain:
+                return "Rain"
+            default:
+                return "Clear"
+            }
+        }
+        
+        return "Loading..."
     }
     
     var temperatureCelsius: Int? {
-        // Use mock temperature if available
+        // Prefer real weather data over mock
+        if let temp = currentWeather?.currentWeather.temperature {
+            return Int(temp.value)
+        }
+        
+        // Fallback to mock temperature
         if let mockTemp = mockTemperature {
             return mockTemp
         }
         
-        guard let temp = currentWeather?.currentWeather.temperature else {
-            return nil
-        }
-        return Int(temp.value)
+        return nil
     }
     
     var formattedWeatherString: String {
