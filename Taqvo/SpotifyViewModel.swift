@@ -14,6 +14,7 @@ final class SpotifyViewModel: ObservableObject {
     @Published var isPlaying: Bool = false
     @Published var currentTitle: String = "Not Playing"
     @Published var currentArtist: String = ""
+    @Published var currentArtwork: UIImage?
 
     @Published var playlists: [SpotifyPlaylist] = []
 
@@ -82,6 +83,13 @@ final class SpotifyViewModel: ObservableObject {
             if let item = state.item {
                 currentTitle = item.name
                 currentArtist = item.artists?.first?.name ?? ""
+                
+                // Fetch artwork
+                if let albumImages = item.album?.images, let imageUrl = albumImages.first?.url {
+                    await fetchArtwork(from: imageUrl)
+                } else {
+                    currentArtwork = nil
+                }
             }
             if let dev = state.device, let devId = dev.id {
                 lastDeviceID = devId
@@ -221,9 +229,81 @@ final class SpotifyViewModel: ObservableObject {
         }
     }
 
+    func resume() async {
+        if !isPlaying {
+            await togglePlayPause()
+        }
+    }
+    
+    func pause() async {
+        if isPlaying {
+            await togglePlayPause()
+        }
+    }
+    
     func stopPlayback() async {
         // Spotify does not have a distinct "stop"; we use pause.
         if isPlaying { await togglePlayPause() }
+    }
+    
+    func skipToNext() async {
+        await auth.refreshAccessTokenIfNeeded()
+        guard let token = auth.accessToken else { return }
+        
+        var req = URLRequest(url: URL(string: "https://api.spotify.com/v1/me/player/next")!)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        do {
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return }
+            if (200...299).contains(http.statusCode) {
+                // Wait a bit then refresh state to get new track info
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                await refreshState()
+            } else {
+                print("Spotify skip next failed: \(http.statusCode)")
+            }
+        } catch {
+            print("Spotify skip next error: \(error)")
+        }
+    }
+    
+    func skipToPrevious() async {
+        await auth.refreshAccessTokenIfNeeded()
+        guard let token = auth.accessToken else { return }
+        
+        var req = URLRequest(url: URL(string: "https://api.spotify.com/v1/me/player/previous")!)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        do {
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return }
+            if (200...299).contains(http.statusCode) {
+                // Wait a bit then refresh state to get new track info
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                await refreshState()
+            } else {
+                print("Spotify skip previous failed: \(http.statusCode)")
+            }
+        } catch {
+            print("Spotify skip previous error: \(error)")
+        }
+    }
+    
+    private func fetchArtwork(from urlString: String) async {
+        guard let url = URL(string: urlString) else { return }
+        
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let image = UIImage(data: data) {
+                currentArtwork = image
+            }
+        } catch {
+            print("Failed to fetch artwork: \(error)")
+            currentArtwork = nil
+        }
     }
 
     func loadPlaylists() async {

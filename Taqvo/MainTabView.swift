@@ -16,12 +16,16 @@ struct MainTabView: View {
     @State private var selectedTab: Tab = .activity
     @StateObject private var profileService = ProfileService.shared
     @StateObject private var weatherVM = WeatherViewModel()
+    @StateObject private var musicVM = MusicViewModel()
+    @StateObject private var spotifyVM = SpotifyViewModel()
+    @State private var showMiniPlayer: Bool = false
 
     enum Tab: Hashable {
         case feed, community, activity, insights, profile
     }
 
     var body: some View {
+        ZStack(alignment: .bottom) {
         TabView(selection: $selectedTab) {
             FeedView()
                 .tabItem {
@@ -71,6 +75,35 @@ struct MainTabView: View {
         }
         .tint(.taqvoCTA)
         .background(Color.taqvoBackgroundDark)
+        
+        // Floating Music Button
+        if !showMiniPlayer && (musicVM.isPlaying || spotifyVM.isPlaying) {
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    Button {
+                        showMiniPlayer = true
+                    } label: {
+                        Image(systemName: "music.note")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(.black)
+                            .frame(width: 56, height: 56)
+                            .background(Color.taqvoCTA)
+                            .clipShape(Circle())
+                            .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+                    }
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 90) // Above tab bar
+                }
+            }
+        }
+        }
+        .sheet(isPresented: $showMiniPlayer) {
+            MiniMusicPlayerView(musicVM: musicVM, spotifyVM: spotifyVM)
+                .presentationDetents([.height(350)])
+                .presentationDragIndicator(.visible)
+        }
     }
 }
 

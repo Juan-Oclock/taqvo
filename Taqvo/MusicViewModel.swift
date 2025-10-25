@@ -18,6 +18,7 @@ final class MusicViewModel: ObservableObject {
     @Published var isPlaying: Bool = false
     @Published var currentTitle: String = "Not Playing"
     @Published var currentArtist: String = ""
+    @Published var currentArtwork: UIImage?
 
     @Published var playlists: [MPMediaPlaylist] = []
 
@@ -76,9 +77,26 @@ final class MusicViewModel: ObservableObject {
             self.currentTitle = item?.title ?? "Not Playing"
             self.currentArtist = item?.artist ?? ""
             self.isPlaying = self.player.playbackState == .playing
+            
+            // Update artwork
+            if let artwork = item?.artwork {
+                self.currentArtwork = artwork.image(at: CGSize(width: 300, height: 300))
+            } else {
+                self.currentArtwork = nil
+            }
         }
     }
 
+    func play() {
+        player.play()
+        updateNowPlaying()
+    }
+    
+    func pause() {
+        player.pause()
+        updateNowPlaying()
+    }
+    
     func togglePlayPause() {
         if player.playbackState == .playing {
             player.pause()
@@ -90,6 +108,16 @@ final class MusicViewModel: ObservableObject {
 
     func stopPlayback() {
         player.stop()
+        updateNowPlaying()
+    }
+    
+    func skipToNext() {
+        player.skipToNextItem()
+        updateNowPlaying()
+    }
+    
+    func skipToPrevious() {
+        player.skipToPreviousItem()
         updateNowPlaying()
     }
 
