@@ -133,6 +133,7 @@ struct ActivityView: View {
     @StateObject private var spotifyVM = SpotifyViewModel()
     @State private var showPlaylistPicker: Bool = false
     @State private var showSpotifyPicker: Bool = false
+    @State private var showMiniPlayer: Bool = false
     @State private var provider: MusicProvider = .spotify
 
     enum ActivityType: String, CaseIterable { 
@@ -371,59 +372,64 @@ struct ActivityView: View {
     // MARK: - Music Selection Card
     private var musicSelectionCard: some View {
         VStack(spacing: 16) {
-            // Music Provider Selection
-            HStack(spacing: 12) {
-                Image(systemName: provider == .apple ? "music.note" : "music.note.list")
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(.taqvoCTA)
-                    .frame(width: 40, height: 40)
-                    .background(Color.taqvoCTA.opacity(0.15))
-                    .cornerRadius(20)
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(provider == .apple ? "Apple Music" : "Spotify")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.taqvoTextDark)
-                    
-                    Text(musicStatusText)
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundColor(.taqvoAccentText)
-                        .lineLimit(1)
-                }
-                
-                Spacer()
-                
-                // Provider Toggle
-                Menu {
-                    Button {
-                        provider = .apple
-                        storedProviderString = MusicProvider.apple.rawValue
-                    } label: {
-                        HStack {
-                            Text("Apple Music")
-                            if provider == .apple {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                    
-                    Button {
-                        provider = .spotify
-                        storedProviderString = MusicProvider.spotify.rawValue
-                    } label: {
-                        HStack {
-                            Text("Spotify")
-                            if provider == .spotify {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle.fill")
-                        .font(.system(size: 28))
+            // Music Provider Selection (Tappable to open mini player)
+            Button {
+                showMiniPlayer = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: provider == .apple ? "music.note" : "music.note.list")
+                        .font(.system(size: 24, weight: .medium))
                         .foregroundColor(.taqvoCTA)
+                        .frame(width: 40, height: 40)
+                        .background(Color.taqvoCTA.opacity(0.15))
+                        .cornerRadius(20)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(provider == .apple ? "Apple Music" : "Spotify")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.taqvoTextDark)
+                        
+                        Text(musicStatusText)
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundColor(.taqvoAccentText)
+                            .lineLimit(1)
+                    }
+                    
+                    Spacer()
+                    
+                    // Provider Toggle
+                    Menu {
+                        Button {
+                            provider = .apple
+                            storedProviderString = MusicProvider.apple.rawValue
+                        } label: {
+                            HStack {
+                                Text("Apple Music")
+                                if provider == .apple {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                        
+                        Button {
+                            provider = .spotify
+                            storedProviderString = MusicProvider.spotify.rawValue
+                        } label: {
+                            HStack {
+                                Text("Spotify")
+                                if provider == .spotify {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(.taqvoCTA)
+                    }
                 }
             }
+            .buttonStyle(PlainButtonStyle())
             
             // Authorization or Playlist Selection
             if provider == .apple {
@@ -982,6 +988,11 @@ struct ActivityView: View {
             }
             .sheet(isPresented: $showSpotifyPicker) {
                 SpotifyPlaylistPickerView(spotifyVM: spotifyVM)
+            }
+            .sheet(isPresented: $showMiniPlayer) {
+                MiniMusicPlayerView(musicVM: musicVM, spotifyVM: spotifyVM)
+                    .presentationDetents([.height(350)])
+                    .presentationDragIndicator(.visible)
             }
         }
     }
