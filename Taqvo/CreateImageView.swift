@@ -393,15 +393,54 @@ struct CreateImageView: View {
     
     @ViewBuilder
     private func routeLineDecoration() -> some View {
-        Path { path in
-            path.move(to: CGPoint(x: 0, y: 15))
-            path.addCurve(
-                to: CGPoint(x: 80, y: 15),
-                control1: CGPoint(x: 20, y: 0),
-                control2: CGPoint(x: 60, y: 30)
-            )
+        GeometryReader { geometry in
+            if !summary.route.isEmpty {
+                // Use actual route data
+                Path { path in
+                    let route = summary.route
+                    
+                    // Find bounds of route
+                    let lats = route.map { $0.latitude }
+                    let lons = route.map { $0.longitude }
+                    guard let minLat = lats.min(), let maxLat = lats.max(),
+                          let minLon = lons.min(), let maxLon = lons.max() else {
+                        return
+                    }
+                    
+                    let latRange = maxLat - minLat
+                    let lonRange = maxLon - minLon
+                    
+                    // Avoid division by zero
+                    guard latRange > 0 && lonRange > 0 else {
+                        return
+                    }
+                    
+                    // Map coordinates to view space
+                    for (index, coord) in route.enumerated() {
+                        let x = ((coord.longitude - minLon) / lonRange) * geometry.size.width
+                        let y = geometry.size.height - ((coord.latitude - minLat) / latRange) * geometry.size.height
+                        
+                        if index == 0 {
+                            path.move(to: CGPoint(x: x, y: y))
+                        } else {
+                            path.addLine(to: CGPoint(x: x, y: y))
+                        }
+                    }
+                }
+                .stroke(style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+            } else {
+                // Fallback decorative curve if no route data
+                Path { path in
+                    path.move(to: CGPoint(x: 0, y: geometry.size.height / 2))
+                    path.addCurve(
+                        to: CGPoint(x: geometry.size.width, y: geometry.size.height / 2),
+                        control1: CGPoint(x: geometry.size.width * 0.25, y: 0),
+                        control2: CGPoint(x: geometry.size.width * 0.75, y: geometry.size.height)
+                    )
+                }
+                .stroke(style: StrokeStyle(lineWidth: 3, lineCap: .round))
+            }
         }
-        .stroke(style: StrokeStyle(lineWidth: 3, lineCap: .round))
     }
     
     // MARK: - Helper Functions
