@@ -26,6 +26,7 @@ struct PostRunSummaryView: View {
     @State private var elevationGainMeters: Double?
     @State private var activityTitle: String = ""
     @State private var selectedVisibility: PostVisibility = .privateOnly
+    @State private var showCreateImage: Bool = false
 
     var body: some View {
         ZStack {
@@ -219,36 +220,29 @@ struct PostRunSummaryView: View {
     }
     
     private var actionButtons: some View {
-        VStack(spacing: 12) {
-            Button {
-                Task { await handleShareTap() }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "paperplane.fill")
-                        .font(.system(size: 18))
-                    Text("Share to Feed")
-                        .font(.system(size: 17, weight: .semibold))
-                }
-                .foregroundColor(.black)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 18)
-                .background(Color.taqvoCTA)
-                .cornerRadius(14)
+        Button {
+            Task { await handleContinueTap() }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.right.circle.fill")
+                    .font(.system(size: 18))
+                Text("Continue")
+                    .font(.system(size: 17, weight: .semibold))
             }
-            
-            ShareLink(item: summaryShareImageURL()) {
-                HStack(spacing: 8) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 18))
-                    Text("Share Image")
-                        .font(.system(size: 17, weight: .semibold))
-                }
-                .foregroundColor(.taqvoTextDark)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 18)
-                .background(Color.black.opacity(0.2))
-                .cornerRadius(14)
-            }
+            .foregroundColor(.black)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 18)
+            .background(Color.taqvoCTA)
+            .cornerRadius(14)
+        }
+        .sheet(isPresented: $showCreateImage) {
+            CreateImageView(
+                summary: summary,
+                selectedPhoto: selectedPhoto,
+                activityTitle: activityTitle,
+                note: note,
+                snapshot: snapshot
+            )
         }
     }
     
@@ -420,7 +414,7 @@ struct PostRunSummaryView: View {
     }
 
     @MainActor
-    private func handleShareTap() async {
+    private func handleContinueTap() async {
         if saveToHealth && health.authorized {
             let ok = await health.save(summary: summary)
             healthSaveMessage = ok ? "Saved to Health" : "Health save failed"
@@ -436,7 +430,9 @@ struct PostRunSummaryView: View {
                   avgHeartRateBPM: avgHR,
                   title: passedTitle,
                   visibility: selectedVisibility)
-        dismiss()
+        
+        // Show create image view
+        showCreateImage = true
     }
 }
 
