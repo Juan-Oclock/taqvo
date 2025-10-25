@@ -22,8 +22,18 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     func requestLocation() {
-        if authorizationStatus == .authorizedWhenInUse || authorizationStatus == .authorizedAlways {
-            manager.requestLocation()
+        let status = manager.authorizationStatus
+        print("🌍 Location authorization status: \(status.rawValue)")
+        
+        if status == .authorizedWhenInUse || status == .authorizedAlways {
+            print("🌍 Starting location updates...")
+            manager.startUpdatingLocation()
+            // Stop after getting first location
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.manager.stopUpdatingLocation()
+            }
+        } else {
+            print("🌍 Location not authorized")
         }
     }
     
@@ -31,16 +41,24 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         authorizationStatus = manager.authorizationStatus
+        print("🌍 Authorization changed to: \(authorizationStatus.rawValue)")
+        
         if authorizationStatus == .authorizedWhenInUse || authorizationStatus == .authorizedAlways {
-            manager.requestLocation()
+            manager.startUpdatingLocation()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.manager.stopUpdatingLocation()
+            }
         }
     }
     
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        location = locations.first
+        guard let newLocation = locations.first else { return }
+        print("🌍 Got location: \(newLocation.coordinate.latitude), \(newLocation.coordinate.longitude)")
+        location = newLocation
+        manager.stopUpdatingLocation()
     }
     
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("Location manager error: \(error.localizedDescription)")
+        print("🌍 Location manager error: \(error.localizedDescription)")
     }
 }

@@ -20,25 +20,31 @@ class WeatherViewModel: ObservableObject {
     private let geocoder = CLGeocoder()
     
     func fetchWeather(for location: CLLocation) async {
+        print("🌤️ Fetching weather for location: \(location.coordinate.latitude), \(location.coordinate.longitude)")
         isLoading = true
         errorMessage = nil
         
         do {
             // Fetch weather
+            print("🌤️ Calling WeatherService...")
             let weather = try await weatherService.weather(for: location)
             currentWeather = weather
+            print("🌤️ Weather fetched successfully")
             
             // Reverse geocode to get city name
+            print("🌤️ Reverse geocoding location...")
             let placemarks = try await geocoder.reverseGeocodeLocation(location)
             if let placemark = placemarks.first {
                 cityName = placemark.locality ?? placemark.administrativeArea ?? "Unknown"
+                print("🌤️ City name: \(cityName)")
             }
         } catch {
             errorMessage = "Unable to fetch weather"
-            print("Weather fetch error: \(error.localizedDescription)")
+            print("🌤️ Weather fetch error: \(error.localizedDescription)")
         }
         
         isLoading = false
+        print("🌤️ Weather loading complete. Has weather: \(currentWeather != nil)")
     }
     
     var weatherConditionIcon: String {

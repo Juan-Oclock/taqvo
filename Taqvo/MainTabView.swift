@@ -125,8 +125,14 @@ struct ActivityView: View {
                         .foregroundColor(.taqvoAccentText)
                     
                     // Weather info
-                    if !weatherVM.isLoading && weatherVM.currentWeather != nil {
-                        HStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        if weatherVM.isLoading {
+                            ProgressView()
+                                .tint(.taqvoCTA)
+                            Text("Loading weather...")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.taqvoAccentText)
+                        } else if let _ = weatherVM.currentWeather {
                             Image(systemName: weatherVM.weatherConditionIcon)
                                 .font(.system(size: 16, weight: .medium))
                                 .foregroundColor(.taqvoCTA)
@@ -134,12 +140,20 @@ struct ActivityView: View {
                             Text(weatherVM.formattedWeatherString)
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundColor(.taqvoAccentText)
+                        } else if let error = weatherVM.errorMessage {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.orange)
+                            Text(error)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.taqvoAccentText)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(Color.black.opacity(0.1))
-                        .cornerRadius(20)
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.1))
+                    .cornerRadius(20)
+                    .opacity((weatherVM.isLoading || weatherVM.currentWeather != nil || weatherVM.errorMessage != nil) ? 1 : 0)
                 }
                 .padding(.top, 40)
                 
