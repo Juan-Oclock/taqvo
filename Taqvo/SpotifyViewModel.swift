@@ -407,8 +407,17 @@ private struct SpotifyPlaylistsResponse: Decodable {
 private struct SpotifyPlayerState: Decodable {
     struct Track: Decodable {
         struct Artist: Decodable { let name: String }
+        struct Album: Decodable {
+            struct Image: Decodable {
+                let url: String
+                let height: Int?
+                let width: Int?
+            }
+            let images: [Image]?
+        }
         let name: String
         let artists: [Artist]?
+        let album: Album?
     }
     struct Device: Decodable {
         let id: String?
