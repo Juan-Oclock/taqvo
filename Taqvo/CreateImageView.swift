@@ -14,6 +14,7 @@ struct CreateImageView: View {
     let activityTitle: String
     let note: String
     let snapshot: UIImage?
+    let onSave: ((Bool) -> Void)?
     
     @Environment(\.dismiss) private var dismiss
     @State private var selectedFormat: ImageFormat = .stories
@@ -22,6 +23,7 @@ struct CreateImageView: View {
     @State private var currentPhoto: UIImage?
     @State private var isSaving: Bool = false
     @State private var showSaveSuccess: Bool = false
+    @State private var showDismissAlert: Bool = false
     
     enum ImageFormat: String, CaseIterable {
         case stories = "Stories"
@@ -79,7 +81,11 @@ struct CreateImageView: View {
     private var header: some View {
         HStack {
             Button {
-                dismiss()
+                if onSave != nil {
+                    showDismissAlert = true
+                } else {
+                    dismiss()
+                }
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 18, weight: .semibold))
@@ -96,13 +102,38 @@ struct CreateImageView: View {
             
             Spacer()
             
-            // Invisible spacer for balance
-            Color.clear
+            // Save & Close button (if onSave is provided)
+            if onSave != nil {
+                Button {
+                    onSave?(true)
+                    dismiss()
+                } label: {
+                    Text("Done")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.taqvoCTA)
+                }
                 .frame(width: 44, height: 44)
+            } else {
+                Color.clear
+                    .frame(width: 44, height: 44)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(Color.taqvoBackgroundDark)
+        .alert("Save Activity?", isPresented: $showDismissAlert) {
+            Button("Save to Feed", role: .none) {
+                onSave?(true)
+                dismiss()
+            }
+            Button("Discard", role: .destructive) {
+                onSave?(false)
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Do you want to save this activity to your feed?")
+        }
     }
     
     private var formatSelector: some View {
@@ -461,6 +492,7 @@ struct CreateImageView: View {
         selectedPhoto: nil,
         activityTitle: "Morning Run",
         note: "Great run!",
-        snapshot: nil
+        snapshot: nil,
+        onSave: nil
     )
 }

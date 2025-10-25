@@ -1062,11 +1062,11 @@ struct FeedView: View {
                     ScrollView(showsIndicators: false) {
                         LazyVStack(spacing: 12) {
                             ForEach(sortedActivities) { activity in
-                                ModernActivityCard(activity: activity)
-                                    .environmentObject(store)
-                                    .onTapGesture {
-                                        selectedActivity = activity
-                                    }
+                                ModernActivityCard(
+                                    activity: activity,
+                                    onTapCard: { selectedActivity = activity }
+                                )
+                                .environmentObject(store)
                             }
                         }
                         .padding(.horizontal, 12)
@@ -1115,8 +1115,14 @@ struct FeedView: View {
 
 struct ModernActivityCard: View {
     let activity: FeedActivity
+    let onTapCard: (() -> Void)?
     @EnvironmentObject var store: ActivityStore
     @State private var showCommentsSheet = false
+    
+    init(activity: FeedActivity, onTapCard: (() -> Void)? = nil) {
+        self.activity = activity
+        self.onTapCard = onTapCard
+    }
     
     private var displayUsername: String {
         // Always display the actual username if available
@@ -1180,11 +1186,19 @@ struct ModernActivityCard: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onTapCard?()
+            }
             
             // Map/Photo
             mapOrPhotoView
                 .frame(height: 200)
                 .clipped()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onTapCard?()
+                }
             
             // Activity Title & Stats
             VStack(alignment: .leading, spacing: 16) {
@@ -1192,6 +1206,10 @@ struct ModernActivityCard: View {
                 Text(activityTitle)
                     .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.white)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onTapCard?()
+                    }
                 
                 // Stats Row
                 HStack(spacing: 24) {

@@ -261,7 +261,26 @@ struct PostRunSummaryView: View {
                 selectedPhoto: selectedPhoto,
                 activityTitle: activityTitle,
                 note: note,
-                snapshot: snapshot
+                snapshot: snapshot,
+                onSave: { shouldSave in
+                    if shouldSave {
+                        Task {
+                            let avgHR = health.authorized ? await health.averageHeartRateBPM(start: summary.startDate, end: summary.endDate) : nil
+                            let trimmedTitle = activityTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let passedTitle = trimmedTitle.isEmpty ? nil : trimmedTitle
+                            store.add(summary: summary,
+                                      snapshot: snapshot,
+                                      note: note.isEmpty ? nil : note,
+                                      photo: selectedPhoto,
+                                      avgHeartRateBPM: avgHR,
+                                      title: passedTitle,
+                                      visibility: selectedVisibility)
+                            dismiss()
+                        }
+                    } else {
+                        dismiss()
+                    }
+                }
             )
         }
     }
@@ -439,19 +458,8 @@ struct PostRunSummaryView: View {
             let ok = await health.save(summary: summary)
             healthSaveMessage = ok ? "Saved to Health" : "Health save failed"
         }
-        // Attempt to fetch average heart rate for intensity if authorized
-        let avgHR = health.authorized ? await health.averageHeartRateBPM(start: summary.startDate, end: summary.endDate) : nil
-        let trimmedTitle = activityTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        let passedTitle = trimmedTitle.isEmpty ? nil : trimmedTitle
-        store.add(summary: summary,
-                  snapshot: snapshot,
-                  note: note.isEmpty ? nil : note,
-                  photo: selectedPhoto,
-                  avgHeartRateBPM: avgHR,
-                  title: passedTitle,
-                  visibility: selectedVisibility)
-        
-        // Show create image view
+        // Show create image view without saving to feed
+        // Activity will be saved when CreateImageView is dismissed
         showCreateImage = true
     }
     
