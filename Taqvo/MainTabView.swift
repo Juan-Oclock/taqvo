@@ -125,7 +125,7 @@ struct ActivityView: View {
                         .foregroundColor(.taqvoAccentText)
                     
                     // Weather info (only show if available)
-                    if let _ = weatherVM.currentWeather {
+                    if weatherVM.temperatureCelsius != nil {
                         HStack(spacing: 8) {
                             Image(systemName: weatherVM.weatherConditionIcon)
                                 .font(.system(size: 16, weight: .medium))
