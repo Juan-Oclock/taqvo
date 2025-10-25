@@ -10,7 +10,12 @@ import CoreLocation
 import MapKit
 import UIKit
 
-enum ActivityKind: String, Codable, Hashable { case walk, jog, run, ride }
+enum ActivityKind: String, Codable, Hashable { 
+    case walk
+    case run
+    case trailRun = "trail run"
+    case hiking
+}
 
 struct RouteSample {
     let latitude: Double
@@ -312,21 +317,21 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
             resumeSpeedThreshold = 0.6
             minLowSpeedDurationToPause = 5
             minHighSpeedDurationToResume = 3
-        case .jog:
-            lowSpeedThreshold = 0.8
-            resumeSpeedThreshold = 1.2
-            minLowSpeedDurationToPause = 3
-            minHighSpeedDurationToResume = 2
         case .run:
             lowSpeedThreshold = 1.4
             resumeSpeedThreshold = 2.0
             minLowSpeedDurationToPause = 3
             minHighSpeedDurationToResume = 2
-        case .ride:
-            lowSpeedThreshold = 2.0
-            resumeSpeedThreshold = 3.0
-            minLowSpeedDurationToPause = 2
+        case .trailRun:
+            lowSpeedThreshold = 1.0
+            resumeSpeedThreshold = 1.5
+            minLowSpeedDurationToPause = 4
             minHighSpeedDurationToResume = 2
+        case .hiking:
+            lowSpeedThreshold = 0.4
+            resumeSpeedThreshold = 0.7
+            minLowSpeedDurationToPause = 6
+            minHighSpeedDurationToResume = 3
         }
     }
 
@@ -391,13 +396,13 @@ final class ActivityTrackingViewModel: NSObject, ObservableObject, CLLocationMan
 
     private func estimateCalories() -> Double {
         // Simple MET-based estimate; refine later with HealthKit data
-        // MET values approximate: walk 3.5, jog 7.0, run 9.8, ride 8.0
+        // MET values approximate: walk 3.5, run 9.8, trail run 7.5, hiking 6.0
         let met: Double
         switch activityKind {
         case .walk: met = 3.5
-        case .jog: met = 7.0
         case .run: met = 9.8
-        case .ride: met = 8.0
+        case .trailRun: met = 7.5
+        case .hiking: met = 6.0
         }
         // Assume body mass 70kg if not available; kcal = MET * 3.5 * weight(kg)/200 * minutes
         let weightKg: Double = 70

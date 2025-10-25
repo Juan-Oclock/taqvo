@@ -353,9 +353,9 @@ struct PostRunSummaryView: View {
         let verb: String
         switch summary.kind {
         case .walk: verb = "Walked"
-        case .jog: verb = "Jogged"
         case .run: verb = "Ran"
-        case .ride: verb = "Rode"
+        case .trailRun: verb = "Trail Ran"
+        case .hiking: verb = "Hiked"
         }
 
         let bgImage: UIImage? = snapshot ?? selectedPhoto
@@ -507,8 +507,8 @@ final class HealthSyncService: ObservableObject {
         let config = HKWorkoutConfiguration()
         switch summary.kind {
         case .walk: config.activityType = .walking
-        case .jog, .run: config.activityType = .running
-        case .ride: config.activityType = .cycling
+        case .run, .trailRun: config.activityType = .running
+        case .hiking: config.activityType = .hiking
         }
 
         let builder = HKWorkoutBuilder(healthStore: store, configuration: config, device: nil)
@@ -520,7 +520,7 @@ final class HealthSyncService: ObservableObject {
 
         // Distance
         let distanceQty = HKQuantity(unit: HKUnit.meter(), doubleValue: summary.distanceMeters)
-        let distanceType: HKQuantityTypeIdentifier = (summary.kind == .ride) ? .distanceCycling : .distanceWalkingRunning
+        let distanceType: HKQuantityTypeIdentifier = .distanceWalkingRunning
         if let distType = HKQuantityType.quantityType(forIdentifier: distanceType) {
             let sample = HKQuantitySample(type: distType, quantity: distanceQty, start: summary.startDate, end: summary.endDate)
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
@@ -642,7 +642,7 @@ final class HealthSyncService: ObservableObject {
                                 switch w.workoutActivityType {
                                 case .walking: kind = .walk
                                 case .running: kind = .run
-                                case .cycling: kind = .ride
+                                case .hiking: kind = .hiking
                                 default: kind = .run
                                 }
                                 let meters = w.totalDistance?.doubleValue(for: HKUnit.meter()) ?? 0

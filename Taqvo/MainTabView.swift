@@ -90,12 +90,19 @@ struct ActivityView: View {
 
     @State private var timeMinutes: Int = 30
     @State private var distanceKilometers: Double = 5.0
+    @State private var frequencyPerWeek: Int = 3
+    @State private var showGoalEditSheet: Bool = false
     @StateObject private var musicVM = MusicViewModel()
     @StateObject private var spotifyVM = SpotifyViewModel()
     @State private var showPlaylistPicker: Bool = false
     @State private var showSpotifyPicker: Bool = false
 
-    enum ActivityType: String, CaseIterable { case walk, jog, run, ride }
+    enum ActivityType: String, CaseIterable { 
+        case walk
+        case run
+        case trailRun = "trail run"
+        case hiking
+    }
     enum Goal: String, CaseIterable { case none, time, distance }
     
     // MARK: - Modern UI Views
@@ -124,33 +131,22 @@ struct ActivityView: View {
                     
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                         activityTypeCard(type: .walk, icon: "figure.walk", color: .blue)
-                        activityTypeCard(type: .jog, icon: "figure.run", color: .orange)
                         activityTypeCard(type: .run, icon: "figure.run", color: .red)
-                        activityTypeCard(type: .ride, icon: "bicycle", color: .purple)
+                        activityTypeCard(type: .trailRun, icon: "figure.run.circle", color: .orange)
+                        activityTypeCard(type: .hiking, icon: "figure.hiking", color: .green)
                     }
                     .padding(.horizontal, 16)
                 }
                 
-                // Goal Selection
+                // Goal Display Card
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Goal")
+                    Text("Your Goal")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.taqvoAccentText)
                         .padding(.horizontal, 16)
                     
-                    VStack(spacing: 12) {
-                        goalCard(type: .none, icon: "infinity", title: "Free Run")
-                        goalCard(type: .distance, icon: "location.fill", title: "Distance Goal")
-                        goalCard(type: .time, icon: "clock.fill", title: "Time Goal")
-                    }
-                    .padding(.horizontal, 16)
-                }
-                
-                // Goal Details
-                if goal == .distance {
-                    distanceGoalDetail
-                } else if goal == .time {
-                    timeGoalDetail
+                    currentGoalDisplayCard
+                        .padding(.horizontal, 16)
                 }
                 
                 // Start Button
@@ -234,6 +230,277 @@ struct ActivityView: View {
                     .stroke(goal == type ? Color.taqvoCTA : Color.clear, lineWidth: 2)
             )
         }
+    }
+    
+    // MARK: - Current Goal Display Card
+    private var currentGoalDisplayCard: some View {
+        VStack(spacing: 16) {
+            // Goal Icon and Title
+            HStack(spacing: 12) {
+                Image(systemName: goalIcon)
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundColor(.taqvoCTA)
+                    .frame(width: 40, height: 40)
+                    .background(Color.taqvoCTA.opacity(0.15))
+                    .cornerRadius(20)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(goalTitle)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.taqvoTextDark)
+                    
+                    Text(goalDescription)
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(.taqvoAccentText)
+                        .lineLimit(2)
+                }
+                
+                Spacer()
+                
+                // Edit Button
+                Button(action: {
+                    showGoalEditSheet = true
+                }) {
+                    Image(systemName: "pencil.circle.fill")
+                        .font(.system(size: 28))
+                        .foregroundColor(.taqvoCTA)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(16)
+        .sheet(isPresented: $showGoalEditSheet) {
+            goalEditSheet
+        }
+    }
+    
+    private var goalIcon: String {
+        switch goal {
+        case .none: return "infinity"
+        case .distance: return "location.fill"
+        case .time: return "clock.fill"
+        }
+    }
+    
+    private var goalTitle: String {
+        switch goal {
+        case .none: return "Free Run"
+        case .distance: return "Distance Goal"
+        case .time: return "Time Goal"
+        }
+    }
+    
+    private var goalDescription: String {
+        switch goal {
+        case .none:
+            return "No specific goal - track freely"
+        case .distance:
+            return "\(frequencyPerWeek)x/week, \(String(format: "%.1f", distanceKilometers))km each"
+        case .time:
+            return "\(frequencyPerWeek)x/week, \(timeMinutes)min each"
+        }
+    }
+    
+    // MARK: - Goal Edit Sheet
+    private var goalEditSheet: some View {
+        NavigationStack {
+            ZStack {
+                Color(red: 79/255, green: 79/255, blue: 79/255)
+                    .ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Goal Type Selection
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Goal Type")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.7))
+                            
+                            VStack(spacing: 12) {
+                                goalEditCard(type: .none, icon: "infinity", title: "Free Run")
+                                goalEditCard(type: .distance, icon: "location.fill", title: "Distance Goal")
+                                goalEditCard(type: .time, icon: "clock.fill", title: "Time Goal")
+                            }
+                        }
+                        
+                        // Goal Details
+                        if goal == .distance {
+                            distanceGoalEditDetail
+                        } else if goal == .time {
+                            timeGoalEditDetail
+                        }
+                        
+                        // Frequency Selector
+                        if goal != .none {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Frequency per week")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.7))
+                                
+                                HStack(spacing: 8) {
+                                    ForEach(1...7, id: \.self) { day in
+                                        Button(action: {
+                                            withAnimation(.spring(response: 0.2)) {
+                                                frequencyPerWeek = day
+                                            }
+                                        }) {
+                                            Text("\(day)")
+                                                .font(.system(size: 16, weight: .semibold))
+                                                .foregroundColor(frequencyPerWeek == day ? .black : .white)
+                                                .frame(width: 40, height: 40)
+                                                .background(frequencyPerWeek == day ? Color.taqvoCTA : Color.white.opacity(0.1))
+                                                .cornerRadius(20)
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(16)
+                            .background(Color.black.opacity(0.2))
+                            .cornerRadius(16)
+                        }
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("Edit Goal")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        saveGoalChanges()
+                        showGoalEditSheet = false
+                    }
+                    .foregroundColor(.taqvoCTA)
+                }
+                
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        showGoalEditSheet = false
+                    }
+                    .foregroundColor(.white.opacity(0.7))
+                }
+            }
+        }
+    }
+    
+    private func goalEditCard(type: Goal, icon: String, title: String) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.3)) {
+                goal = type
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundColor(goal == type ? .taqvoCTA : .white.opacity(0.6))
+                    .frame(width: 36, height: 36)
+                    .background(goal == type ? Color.taqvoCTA.opacity(0.15) : Color.white.opacity(0.05))
+                    .cornerRadius(18)
+                
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(goal == type ? .white : .white.opacity(0.7))
+                
+                Spacer()
+                
+                if goal == type {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.taqvoCTA)
+                }
+            }
+            .padding(16)
+            .background(goal == type ? Color.taqvoCTA.opacity(0.1) : Color.black.opacity(0.2))
+            .cornerRadius(12)
+        }
+    }
+    
+    private var distanceGoalEditDetail: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Distance per session")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white.opacity(0.7))
+            
+            HStack {
+                Spacer()
+                Text(String(format: "%.1f", distanceKilometers))
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.white)
+                Text("km")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+                Spacer()
+            }
+            
+            Slider(value: $distanceKilometers, in: 1...42.2, step: 0.5)
+                .tint(.taqvoCTA)
+            
+            HStack {
+                Text("1 km")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.5))
+                Spacer()
+                Text("42.2 km")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+        }
+        .padding(16)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(16)
+    }
+    
+    private var timeGoalEditDetail: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Duration per session")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white.opacity(0.7))
+            
+            HStack {
+                Spacer()
+                Text("\(timeMinutes)")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.white)
+                Text("min")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+                Spacer()
+            }
+            
+            Slider(value: Binding(get: { Double(timeMinutes) }, set: { timeMinutes = Int($0) }), in: 10...180, step: 5)
+                .tint(.taqvoCTA)
+            
+            HStack {
+                Text("10 min")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.5))
+                Spacer()
+                Text("180 min")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+        }
+        .padding(16)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(16)
+    }
+    
+    private func saveGoalChanges() {
+        // Save to UserDefaults
+        UserDefaults.standard.set(goal.rawValue, forKey: "defaultGoalType")
+        UserDefaults.standard.set(frequencyPerWeek, forKey: "defaultFrequencyPerWeek")
+        
+        if goal == .distance {
+            UserDefaults.standard.set(distanceKilometers * 1000, forKey: "defaultDistanceGoalMeters")
+        } else if goal == .time {
+            UserDefaults.standard.set(Double(timeMinutes * 60), forKey: "defaultTimeGoalSeconds")
+        }
+        
+        // Also save to AppStorage keys
+        storedGoalType = goal.rawValue
+        storedGoalDistanceMeters = distanceKilometers * 1000
+        storedGoalTimeSeconds = Double(timeMinutes * 60)
     }
     
     private var distanceGoalDetail: some View {
@@ -352,9 +619,9 @@ struct ActivityView: View {
         // Map selected type into tracking kind
         switch activityType {
         case .walk: trackingVM.setActivityKind(.walk)
-        case .jog: trackingVM.setActivityKind(.jog)
         case .run: trackingVM.setActivityKind(.run)
-        case .ride: trackingVM.setActivityKind(.ride)
+        case .trailRun: trackingVM.setActivityKind(.trailRun)
+        case .hiking: trackingVM.setActivityKind(.hiking)
         }
         
         switch goal {
@@ -416,14 +683,32 @@ struct ActivityView: View {
                 goal = Goal(rawValue: storedGoalType) ?? .none
                 timeMinutes = max(5, min(180, Int(storedGoalTimeSeconds / 60)))
                 distanceKilometers = max(1.0, min(42.2, storedGoalDistanceMeters / 1000.0))
+                
+                // Load frequency from onboarding preferences
+                if let savedFrequency = UserDefaults.standard.object(forKey: "defaultFrequencyPerWeek") as? Int {
+                    frequencyPerWeek = savedFrequency
+                }
+                
+                // Load goal from onboarding if not set
+                if let savedGoalType = UserDefaults.standard.string(forKey: "defaultGoalType") {
+                    if let goalType = Goal(rawValue: savedGoalType) {
+                        goal = goalType
+                    }
+                }
+                if let savedDistance = UserDefaults.standard.object(forKey: "defaultDistanceGoalMeters") as? Double {
+                    distanceKilometers = savedDistance / 1000.0
+                }
+                if let savedTime = UserDefaults.standard.object(forKey: "defaultTimeGoalSeconds") as? Double {
+                    timeMinutes = Int(savedTime / 60.0)
+                }
 
                 // Apply intents for preselection if present
                 if let intent = appState.activityIntent {
                     switch intent {
                     case .walk: activityType = .walk
-                    case .jog: activityType = .jog
                     case .run: activityType = .run
-                    case .ride: activityType = .ride
+                    case .trailRun: activityType = .trailRun
+                    case .hiking: activityType = .hiking
                     }
                 }
                 if let goalIntent = appState.goalIntentType {
@@ -584,9 +869,9 @@ struct ModernActivityCard: View {
     private var activityIcon: String {
         switch activity.kind {
         case .walk: return "figure.walk"
-        case .jog: return "figure.walk.motion"
         case .run: return "figure.run"
-        case .ride: return "bicycle"
+        case .trailRun: return "figure.run.circle"
+        case .hiking: return "figure.hiking"
         }
     }
     
@@ -596,9 +881,9 @@ struct ModernActivityCard: View {
         }
         switch activity.kind {
         case .walk: return "Morning Walk"
-        case .jog: return "Morning Jog"
         case .run: return "Morning Run"
-        case .ride: return "Morning Ride"
+        case .trailRun: return "Morning Trail Run"
+        case .hiking: return "Morning Hike"
         }
     }
     
@@ -861,9 +1146,9 @@ struct ActivityRow: View {
     private var verb: String {
         switch activity.kind {
         case .walk: return "Walked"
-        case .jog: return "Jogged"
         case .run: return "Ran"
-        case .ride: return "Rode"
+        case .trailRun: return "Trail Ran"
+        case .hiking: return "Hiked"
         }
     }
     

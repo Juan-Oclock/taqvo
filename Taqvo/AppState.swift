@@ -15,7 +15,12 @@ enum MusicProvider: String, CaseIterable {
 }
 
 // Simple intent enums for Activity preselection
-enum ActivityIntentType: String, CaseIterable { case walk, jog, run, ride }
+enum ActivityIntentType: String, CaseIterable { 
+    case walk
+    case run
+    case trailRun = "trail run"
+    case hiking
+}
 enum GoalIntentType: String, CaseIterable { case none, time, distance }
 
 final class AppState: ObservableObject {

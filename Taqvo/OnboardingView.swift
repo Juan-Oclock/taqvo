@@ -28,6 +28,10 @@ struct OnboardingView: View {
                 // Permissions page
                 permissionsPage
                     .tag(1)
+                
+                // Getting to know you page
+                GettingToKnowYouView()
+                    .tag(2)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .ignoresSafeArea()
@@ -441,7 +445,9 @@ struct OnboardingView: View {
                     
                     // Continue button
                     Button(action: {
-                        appState.hasCompletedOnboarding = true
+                        withAnimation {
+                            currentPage = 2
+                        }
                     }) {
                         Text(appState.allRequiredPermissionsGranted ? "Continue" : "Continue anyway")
                             .font(.system(size: 16, weight: .semibold))
@@ -456,7 +462,9 @@ struct OnboardingView: View {
                     
                     // Skip button
                     Button(action: {
-                        appState.hasCompletedOnboarding = true
+                        withAnimation {
+                            currentPage = 2
+                        }
                     }) {
                         Text("Skip for now")
                             .font(.system(size: 15, weight: .medium))

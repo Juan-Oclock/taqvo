@@ -15,12 +15,12 @@ struct CommentsBottomSheet: View {
             switch activity.kind {
             case .walk:
                 activityName = "Walking"
-            case .jog:
-                activityName = "Jogging"
             case .run:
                 activityName = "Running"
-            case .ride:
-                activityName = "Riding"
+            case .trailRun:
+                activityName = "Trail Running"
+            case .hiking:
+                activityName = "Hiking"
             }
             return "Comments for \(activityName)"
         }
