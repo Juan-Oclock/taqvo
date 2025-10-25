@@ -22,6 +22,14 @@ final class MusicViewModel: ObservableObject {
     @Published var playlists: [MPMediaPlaylist] = []
 
     @AppStorage("selectedPlaylistID") private var storedPlaylistID: String = ""
+    
+    var currentPlaylistName: String {
+        guard !storedPlaylistID.isEmpty else { return "" }
+        if let playlist = playlists.first(where: { $0.persistentID.description == storedPlaylistID }) {
+            return playlist.name ?? ""
+        }
+        return ""
+    }
 
     // Request access to Apple Music / Media Library
     func requestAuthorization() {

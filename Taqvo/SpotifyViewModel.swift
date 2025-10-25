@@ -19,6 +19,14 @@ final class SpotifyViewModel: ObservableObject {
 
     @AppStorage("spotifySelectedPlaylistURI") private var storedPlaylistURI: String = ""
     @AppStorage("spotifyLastDeviceID") private var lastDeviceID: String = ""
+    
+    var currentPlaylistName: String {
+        guard !storedPlaylistURI.isEmpty else { return "" }
+        if let playlist = playlists.first(where: { $0.uri == storedPlaylistURI }) {
+            return playlist.name
+        }
+        return ""
+    }
 
     private let auth = SpotifyAuthManager.shared
 
