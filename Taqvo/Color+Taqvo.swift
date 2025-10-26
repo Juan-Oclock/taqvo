@@ -35,7 +35,7 @@ extension Color {
     // Global tokens
     static let taqvoOnboardingBG = Color(hex: "#1D1F25")
 
-    static let taqvoBackgroundDark = Color(hex: "#4F4F4F")
+    static let taqvoBackgroundDark = Color(hex: "#171717")
     static let taqvoTextDark = Color(hex: "#F6F8FA")
     static let taqvoTextLight = Color(hex: "#111111")
     static let taqvoAccentText = Color(hex: "#C5C5C5")

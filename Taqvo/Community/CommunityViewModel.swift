@@ -13,6 +13,7 @@ struct Challenge: Identifiable, Hashable {
     var isPublic: Bool
     var createdBy: UUID?
     var createdByUsername: String?
+    var imageUrl: String?
 
     var durationDays: Int {
         Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
@@ -242,8 +243,8 @@ final class CommunityViewModel: ObservableObject {
         }
     }
 
-    func createChallenge(title: String, detail: String, startDate: Date, endDate: Date, goalDistanceMeters: Double, isPublic: Bool, autoJoin: Bool = true) async throws {
-        let created = try await dataSource.createChallenge(title: title, detail: detail, startDate: startDate, endDate: endDate, goalDistanceMeters: goalDistanceMeters, isPublic: isPublic)
+    func createChallenge(title: String, detail: String, startDate: Date, endDate: Date, goalDistanceMeters: Double, isPublic: Bool, imageUrl: String? = nil, autoJoin: Bool = true) async throws {
+        let created = try await dataSource.createChallenge(title: title, detail: detail, startDate: startDate, endDate: endDate, goalDistanceMeters: goalDistanceMeters, isPublic: isPublic, imageUrl: imageUrl)
         await MainActor.run {
             var model = created
             model.isJoined = autoJoin
@@ -272,6 +273,10 @@ final class CommunityViewModel: ObservableObject {
         }
     }
 
+    func refresh() async {
+        load()
+    }
+    
     @MainActor
     func refreshProgress(from store: ActivityStore) {
         for i in challenges.indices {

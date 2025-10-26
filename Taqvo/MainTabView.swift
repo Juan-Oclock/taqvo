@@ -1039,16 +1039,38 @@ struct SupportView: View {
 
 struct FeedView: View {
     @EnvironmentObject var store: ActivityStore
+    @EnvironmentObject var community: CommunityViewModel
+    @StateObject private var profileService = ProfileService.shared
     @State private var selectedActivity: FeedActivity?
+    @State private var selectedFilter: FeedFilter = .all
+    @State private var selectedChallenge: Challenge?
+    @State private var showingComments: FeedActivity?
     
-    private var sortedActivities: [FeedActivity] {
+    enum FeedFilter: String, CaseIterable, Hashable {
+        case all = "View All"
+        case activity = "Activity"
+        case challenges = "Challenges"
+        case goals = "Goals"
+    }
+    
+    private var recentActivities: [FeedActivity] {
         let currentUserId = SupabaseAuthManager.shared.userId ?? ""
         return store.activities
-            .filter { activity in
-                if activity.userId == currentUserId { return true }
-                return activity.visibility == .publicFeed
-            }
+            .filter { $0.userId == currentUserId }
             .sorted { $0.endDate > $1.endDate }
+            .prefix(10)
+            .map { $0 }
+    }
+    
+    private var thisWeekActivities: [FeedActivity] {
+        let calendar = Calendar.current
+        let now = Date()
+        let weekAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
+        let currentUserId = SupabaseAuthManager.shared.userId ?? ""
+        
+        return store.activities
+            .filter { $0.userId == currentUserId && $0.endDate >= weekAgo }
+            .sorted { $0.endDate < $1.endDate }
     }
 
     var body: some View {
@@ -1056,57 +1078,802 @@ struct FeedView: View {
             ZStack {
                 Color.taqvoBackgroundDark.ignoresSafeArea()
                 
-                if sortedActivities.isEmpty {
-                    emptyStateView
-                } else {
-                    ScrollView(showsIndicators: false) {
-                        LazyVStack(spacing: 12) {
-                            ForEach(sortedActivities) { activity in
-                                ModernActivityCard(
-                                    activity: activity,
-                                    onTapCard: { selectedActivity = activity }
-                                )
-                                .environmentObject(store)
-                            }
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.top, 8)
-                        .padding(.bottom, 20)
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 32) {
+                        // Profile Header
+                        profileHeaderSection
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+                        
+                        // Summary Activity
+                        summaryActivitySection
+                        
+                        // Overall Status
+                        overallStatusSection
+                            .padding(.horizontal, 16)
+                        
+                        // Challenges
+                        challengesSection
+                            .padding(.horizontal, 16)
                     }
-                    .refreshable {
-                        await refreshFeed()
+                    .padding(.bottom, 40)
+                }
+                .refreshable {
+                    await refreshFeed()
+                }
+            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Text("TAQVO")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.taqvoCTA)
+                        .kerning(1.5)
+                }
+                
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 16) {
+                        Button {
+                            // Add action
+                        } label: {
+                            Image(systemName: "plus.circle")
+                                .font(.system(size: 20))
+                                .foregroundColor(.taqvoTextDark)
+                        }
+                        
+                        Button {
+                            // Search action
+                        } label: {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 20))
+                                .foregroundColor(.taqvoTextDark)
+                        }
+                        
+                        Button {
+                            // Notifications action
+                        } label: {
+                            Image(systemName: "bell")
+                                .font(.system(size: 20))
+                                .foregroundColor(.taqvoTextDark)
+                        }
+                        
+                        Button {
+                            // Settings action
+                        } label: {
+                            Image(systemName: "gearshape")
+                                .font(.system(size: 20))
+                                .foregroundColor(.taqvoTextDark)
+                        }
                     }
                 }
             }
-            .navigationTitle("Feed")
-            .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(item: $selectedActivity) { activity in
                 ActivityDetailView(activity: activity)
             }
+            .navigationDestination(item: $selectedChallenge) { challenge in
+                ChallengeDetailView(challenge: challenge)
+            }
+            .sheet(item: $showingComments) { activity in
+                NavigationStack {
+                    CommentsView(activityID: activity.id)
+                        .environmentObject(store)
+                        .navigationTitle("Comments")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Done") {
+                                    showingComments = nil
+                                }
+                            }
+                        }
+                }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
+        }
+        .onAppear {
+            Task {
+                await profileService.loadCurrentUserProfile()
+            }
         }
     }
     
-    private var emptyStateView: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "figure.run")
-                .font(.system(size: 64, weight: .thin))
-                .foregroundColor(.taqvoCTA.opacity(0.5))
+    // MARK: - Profile Header Section
+    private var profileHeaderSection: some View {
+        VStack(spacing: 16) {
+            HStack(spacing: 12) {
+                // Avatar
+                Group {
+                    if let avatarUrl = profileService.currentProfile?.avatarUrl,
+                       let url = URL(string: avatarUrl) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 48, height: 48)
+                                    .clipShape(Circle())
+                            case .failure(_), .empty:
+                                Circle()
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(width: 48, height: 48)
+                                    .overlay(
+                                        Image(systemName: "person.fill")
+                                            .foregroundColor(.gray.opacity(0.6))
+                                            .font(.system(size: 20))
+                                    )
+                            @unknown default:
+                                Circle()
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(width: 48, height: 48)
+                            }
+                        }
+                    } else {
+                        Circle()
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(width: 48, height: 48)
+                            .overlay(
+                                Image(systemName: "person.fill")
+                                    .foregroundColor(.gray.opacity(0.6))
+                                    .font(.system(size: 20))
+                            )
+                    }
+                }
+                
+                // Greeting
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Welcome back")
+                        .font(.system(size: 12))
+                        .foregroundColor(.taqvoAccentText)
+                    
+                    Text("Hi, \(profileService.currentProfile?.username ?? "User")!")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.taqvoTextDark)
+                }
+                
+                Spacer()
+            }
             
-            VStack(spacing: 8) {
-                Text("No Activities")
-                    .font(.system(size: 24, weight: .semibold))
+            // Filter Chips
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    // Chevrons Left
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.taqvoTextDark)
+                    
+                    ForEach(FeedFilter.allCases, id: \.self) { filter in
+                        filterChip(filter)
+                    }
+                }
+            }
+            .padding(.top, 8)
+        }
+    }
+    
+    private func filterChip(_ filter: FeedFilter) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.3)) {
+                selectedFilter = filter
+            }
+        } label: {
+            Text(filter.rawValue)
+                .font(.system(size: 15, weight: selectedFilter == filter ? .semibold : .regular))
+                .foregroundColor(selectedFilter == filter ? .black : .taqvoTextDark)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(selectedFilter == filter ? Color.taqvoCTA : Color(hex: "#202020"))
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule()
+                        .stroke(selectedFilter == filter ? Color.clear : Color(hex: "#343434"), lineWidth: 1)
+                )
+        }
+    }
+    
+    // MARK: - Summary Activity Section
+    private var summaryActivitySection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Summary Activity")
+                    .font(.system(size: 22, weight: .bold))
                     .foregroundColor(.taqvoTextDark)
                 
-                Text("Complete your first activity\nto see it here")
-                    .font(.system(size: 15))
+                Spacer()
+                
+                Button {
+                    // See all action
+                } label: {
+                    Text("See all")
+                        .font(.system(size: 14))
+                        .foregroundColor(.taqvoCTA)
+                }
+            }
+            .padding(.horizontal, 16)
+            
+            summaryCardsView
+        }
+    }
+    
+    @ViewBuilder
+    private var summaryCardsView: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 16) {
+                if recentActivities.isEmpty {
+                    emptyActivityCard()
+                } else {
+                    ForEach(recentActivities) { activity in
+                        GeometryReader { geometry in
+                            let minX = geometry.frame(in: .global).minX
+                            
+                            // Calculate distance from leading edge (left side)
+                            let distanceFromLeading = max(0, minX - 16)
+                            
+                            // Normalize to 0-1 range (0 = at leading edge, 1 = far right)
+                            let normalizedDistance = min(1.0, distanceFromLeading / 350.0)
+                            
+                            // Calculate scale (1.0 at leading edge, 0.90 when far)
+                            let scale = 1.0 - (normalizedDistance * 0.10)
+                            
+                            // Calculate opacity (only fade cards that are really far)
+                            let opacity = normalizedDistance > 0.7 ? 1.0 - ((normalizedDistance - 0.7) * 0.5) : 1.0
+                            
+                            // Overlay darkness - only apply to cards much further away
+                            let overlayDarkness = normalizedDistance > 0.6 ? (normalizedDistance - 0.6) * 0.5 : 0.0
+                            
+                            summaryActivityCard(
+                                icon: activityIcon(for: activity.kind),
+                                title: activity.title ?? activityTypeName(for: activity.kind),
+                                activity: activity
+                            )
+                            .scaleEffect(scale)
+                            .opacity(opacity)
+                            .overlay(
+                                Color.black.opacity(overlayDarkness)
+                                    .allowsHitTesting(false)
+                            )
+                            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: scale)
+                        }
+                        .frame(width: 285, height: 280)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+    
+    private func activityIcon(for kind: ActivityKind) -> String {
+        switch kind {
+        case .run:
+            return "figure.run"
+        case .walk:
+            return "figure.walk"
+        case .trailRun:
+            return "figure.run"
+        case .hiking:
+            return "figure.hiking"
+        }
+    }
+    
+    private func activityTypeName(for kind: ActivityKind) -> String {
+        switch kind {
+        case .run:
+            return "Running"
+        case .walk:
+            return "Walking"
+        case .trailRun:
+            return "Trail Run"
+        case .hiking:
+            return "Hiking"
+        }
+    }
+    
+    private func summaryActivityCard(icon: String, title: String, activity: FeedActivity) -> some View {
+        VStack(spacing: 0) {
+            cardHeader(icon: icon, title: title)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    selectedActivity = activity
+                }
+            
+            cardStatsGrid(activity: activity)
+                .padding(12)
+        }
+        .frame(width: 285)
+        .background(Color(hex: "#202020"))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color(hex: "#343434"), lineWidth: 1)
+        )
+    }
+    
+    private func cardHeader(icon: String, title: String) -> some View {
+        HStack {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundColor(.taqvoCTA)
+                Text(title)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(.taqvoTextDark)
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .font(.system(size: 16))
+                .foregroundColor(.taqvoAccentText)
+        }
+        .padding(16)
+    }
+    
+    @ViewBuilder
+    private func cardStatsGrid(activity: FeedActivity) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Hero Metric - Distance
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "flag")
+                        .font(.system(size: 14))
+                        .foregroundColor(.taqvoCTA)
+                    
+                    Text("Distance")
+                        .font(.system(size: 13))
+                        .foregroundColor(.taqvoAccentText)
+                }
+                
+                Text(String(format: "%.2f", activity.distanceMeters / 1000))
+                    .font(.system(size: 40, weight: .bold))
+                    .foregroundColor(.taqvoTextDark)
+                + Text(" KM")
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.taqvoAccentText)
-                    .multilineTextAlignment(.center)
+            }
+            
+            // Secondary Metrics Row
+            HStack(spacing: 16) {
+                HStack(spacing: 6) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 13))
+                        .foregroundColor(.taqvoCTA)
+                    Text(ActivityTrackingViewModel.formattedDuration(activity.durationSeconds))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.taqvoTextDark)
+                }
+                
+                if let steps = activity.stepsCount {
+                    HStack(spacing: 6) {
+                        Image(systemName: "figure.walk")
+                            .font(.system(size: 13))
+                            .foregroundColor(.taqvoCTA)
+                        Text("\(steps)")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.taqvoTextDark)
+                    }
+                }
+                
+                HStack(spacing: 6) {
+                    Image(systemName: "flame")
+                        .font(.system(size: 13))
+                        .foregroundColor(.taqvoCTA)
+                    Text(String(format: "%.0f", activity.caloriesKilocalories))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.taqvoTextDark)
+                }
+            }
+            
+            // Social Actions
+            Divider()
+                .background(Color.white.opacity(0.1))
+            
+            HStack(spacing: 20) {
+                // Like Button
+                Button {
+                    handleLike(activity: activity)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: activity.likedByUserIds.contains(SupabaseAuthManager.shared.userId ?? "") ? "heart.fill" : "heart")
+                            .font(.system(size: 16))
+                            .foregroundColor(activity.likedByUserIds.contains(SupabaseAuthManager.shared.userId ?? "") ? .red : .taqvoAccentText)
+                        
+                        if activity.likeCount > 0 {
+                            Text("\(activity.likeCount)")
+                                .font(.system(size: 13))
+                                .foregroundColor(.taqvoAccentText)
+                        }
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                
+                // Comment Button
+                Button {
+                    showingComments = activity
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bubble.left")
+                            .font(.system(size: 16))
+                            .foregroundColor(.taqvoAccentText)
+                        
+                        if activity.comments.count > 0 {
+                            Text("\(activity.comments.count)")
+                                .font(.system(size: 13))
+                                .foregroundColor(.taqvoAccentText)
+                        }
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                
+                Spacer()
+                
+                // Date (tappable to view details)
+                Button {
+                    selectedActivity = activity
+                } label: {
+                    Text(activity.startDate.formatted(date: .abbreviated, time: .omitted))
+                        .font(.system(size: 11))
+                        .foregroundColor(.taqvoAccentText)
+                }
+                .buttonStyle(PlainButtonStyle())
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(20)
+        .background(Color(hex: "#171717"))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    private func statItem(icon: String, label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundColor(.taqvoCTA)
+                
+                Text(label)
+                    .font(.system(size: 15))
+                    .foregroundColor(.taqvoAccentText)
+            }
+            
+            Text(value)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.taqvoTextDark)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+    }
+    
+    private func emptyActivityCard() -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: "figure.run")
+                .font(.system(size: 40))
+                .foregroundColor(.taqvoAccentText.opacity(0.5))
+            
+            Text("No recent activities")
+                .font(.system(size: 14))
+                .foregroundColor(.taqvoAccentText)
+                .multilineTextAlignment(.center)
+        }
+        .frame(width: 228, height: 166)
+        .background(Color.black.opacity(0.2))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    // MARK: - Overall Status Section
+    private var overallStatusSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Overall Status")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(.taqvoTextDark)
+                
+                Spacer()
+                
+                Button {
+                    // See all action
+                } label: {
+                    Text("See all")
+                        .font(.system(size: 14))
+                        .foregroundColor(.taqvoCTA)
+                }
+            }
+            
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Text("This week")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.taqvoTextDark)
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14))
+                        .foregroundColor(.taqvoAccentText)
+                }
+                .padding(16)
+                
+                // Graph
+                weeklyGraphView
+                    .frame(height: 100)
+                    .padding(.horizontal, 16)
+                
+                // Days
+                weekDaysView
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+            }
+            .background(Color(hex: "#202020"))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(hex: "#343434"), lineWidth: 1)
+            )
+        }
+    }
+    
+    private var weeklyGraphView: some View {
+        GeometryReader { geometry in
+            let activities = thisWeekActivities
+            let totalDistance = activities.reduce(0.0) { $0 + $1.distanceMeters }
+            let maxDistance = max(activities.map { $0.distanceMeters }.max() ?? 1000, 1.0)
+            
+            // Guard against invalid geometry
+            guard geometry.size.width > 0 && geometry.size.height > 0 else {
+                return AnyView(EmptyView())
+            }
+            
+            return AnyView(
+                ZStack(alignment: .leading) {
+                    // Curve path
+                    Path { path in
+                        let width = geometry.size.width
+                        let height = geometry.size.height
+                        
+                        guard width.isFinite && height.isFinite else { return }
+                        
+                        path.move(to: CGPoint(x: 0, y: height))
+                        
+                        if activities.isEmpty {
+                            path.addLine(to: CGPoint(x: width, y: height))
+                        } else {
+                            for (index, activity) in activities.enumerated() {
+                                let x: CGFloat
+                                if activities.count > 1 {
+                                    x = (CGFloat(index) / CGFloat(activities.count - 1)) * width
+                                } else {
+                                    x = width / 2
+                                }
+                                
+                                let ratio = activity.distanceMeters / maxDistance
+                                let y = height - (CGFloat(ratio) * height * 0.8)
+                                
+                                guard x.isFinite && y.isFinite else { continue }
+                                
+                                path.addLine(to: CGPoint(x: x, y: y))
+                            }
+                        }
+                    }
+                    .stroke(Color.taqvoCTA, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                    
+                    // Indicator point
+                    if let lastActivity = activities.last, !activities.isEmpty, activities.count > 1 {
+                        let lastIndex = activities.count - 1
+                        let x = (CGFloat(lastIndex) / CGFloat(activities.count - 1)) * geometry.size.width
+                        let ratio = lastActivity.distanceMeters / maxDistance
+                        let y = geometry.size.height - (CGFloat(ratio) * geometry.size.height * 0.8)
+                        
+                        if x.isFinite && y.isFinite {
+                            Circle()
+                                .fill(Color.white)
+                                .frame(width: 14, height: 14)
+                                .position(x: x, y: y)
+                                .overlay(
+                                    Circle()
+                                        .fill(Color.taqvoCTA)
+                                        .frame(width: 8, height: 8)
+                                        .position(x: x, y: y)
+                                )
+                            
+                            // Distance label
+                            Text(String(format: "%.1f km", totalDistance / 1000))
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.taqvoCTA)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color(hex: "#38402A"))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .position(x: min(max(x, 40), geometry.size.width - 40), y: max(y - 20, 15))
+                        }
+                    }
+                }
+            )
+        }
+    }
+    
+    private var weekDaysView: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<7) { index in
+                dayColumn(for: index)
+            }
+        }
+    }
+    
+    private func dayColumn(for index: Int) -> some View {
+        let date = Calendar.current.date(byAdding: .day, value: index - 6, to: Date()) ?? Date()
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateFormat = "EEE"
+        let dayNumberFormatter = DateFormatter()
+        dayNumberFormatter.dateFormat = "d"
+        
+        return VStack(spacing: 4) {
+            Text(dayFormatter.string(from: date).uppercased())
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(.taqvoAccentText)
+            
+            Text(dayNumberFormatter.string(from: date))
+                .font(.system(size: 12))
+                .foregroundColor(.taqvoAccentText)
+        }
+        .frame(maxWidth: .infinity)
+    }
+    
+    // MARK: - Challenges Section
+    private var challengesSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Challenges")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(.taqvoTextDark)
+                
+                Spacer()
+                
+                Button {
+                    // See all action
+                } label: {
+                    Text("See all")
+                        .font(.system(size: 14))
+                        .foregroundColor(.taqvoCTA)
+                }
+            }
+            
+            challengesContentView
+        }
+    }
+    
+    @ViewBuilder
+    private var challengesContentView: some View {
+        if community.challenges.isEmpty {
+            emptyChallengesView
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 16) {
+                    ForEach(Array(community.challenges.prefix(5))) { challenge in
+                        challengeCard(challenge)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func challengeCard(_ challenge: Challenge) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            // Background image or gradient
+            if let imageUrl = challenge.imageUrl, let url = URL(string: imageUrl) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 241, height: 171)
+                    case .failure(_), .empty:
+                        gradientBackground
+                    @unknown default:
+                        gradientBackground
+                    }
+                }
+            } else {
+                gradientBackground
+            }
+            
+            // Dark overlay for text readability
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.clear,
+                            Color.black.opacity(0.7)
+                        ],
+                        startPoint: .center,
+                        endPoint: .bottom
+                    )
+                )
+            
+            // Content
+            VStack(alignment: .leading, spacing: 8) {
+                Spacer()
+                
+                Text(challenge.title)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                
+                Button {
+                    selectedChallenge = challenge
+                } label: {
+                    Text("Join")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 8)
+                        .background(Color.taqvoCTA)
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(14)
+        }
+        .frame(width: 241, height: 171)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    private var gradientBackground: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [
+                        Color.purple.opacity(0.6),
+                        Color.blue.opacity(0.4)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+    }
+    
+    private var emptyChallengesView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "flag.fill")
+                .font(.system(size: 32))
+                .foregroundColor(.taqvoAccentText.opacity(0.5))
+            
+            Text("No challenges available")
+                .font(.system(size: 14))
+                .foregroundColor(.taqvoAccentText)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 120)
+        .background(Color.black.opacity(0.2))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    private func handleLike(activity: FeedActivity) {
+        guard let userId = SupabaseAuthManager.shared.userId else { return }
+        
+        // Toggle like state
+        var updatedActivity = activity
+        
+        if updatedActivity.likedByUserIds.contains(userId) {
+            // Unlike
+            updatedActivity.likedByUserIds.removeAll { $0 == userId }
+            updatedActivity.likeCount = max(0, updatedActivity.likeCount - 1)
+        } else {
+            // Like
+            updatedActivity.likedByUserIds.append(userId)
+            updatedActivity.likeCount += 1
+        }
+        
+        store.updateActivity(updatedActivity)
+        
+        // TODO: Persist to backend
+        // Task {
+        //     await store.toggleLike(activityId: activity.id)
+        // }
     }
     
     private func refreshFeed() async {
+        await community.refresh()
         try? await Task.sleep(nanoseconds: 500_000_000)
     }
 }
@@ -1746,82 +2513,121 @@ struct CommunityView: View {
     }
     
     private func modernChallengeCard(challenge: Challenge) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Header
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(challenge.title)
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(.taqvoTextDark)
-                    
-                    Text(challenge.detail)
-                        .font(.system(size: 14))
-                        .foregroundColor(.taqvoAccentText)
-                        .lineLimit(2)
+        VStack(alignment: .leading, spacing: 0) {
+            // Challenge Image
+            if let imageUrl = challenge.imageUrl, let url = URL(string: imageUrl) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(height: 180)
+                            .frame(maxWidth: .infinity)
+                            .clipped()
+                    case .failure(_), .empty:
+                        gradientPlaceholder
+                    @unknown default:
+                        gradientPlaceholder
+                    }
                 }
-                
-                Spacer()
-                
-                Image(systemName: "flag.fill")
-                    .font(.system(size: 24))
-                    .foregroundColor(.taqvoCTA)
+            } else {
+                gradientPlaceholder
             }
             
-            // Progress
-            VStack(alignment: .leading, spacing: 8) {
+            // Content Section
+            VStack(alignment: .leading, spacing: 16) {
+                // Header
                 HStack {
-                    Text("Goal: \(String(format: "%.0f km", challenge.goalDistanceMeters/1000.0))")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.taqvoAccentText)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(challenge.title)
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.taqvoTextDark)
+                        
+                        Text(challenge.detail)
+                            .font(.system(size: 14))
+                            .foregroundColor(.taqvoAccentText)
+                            .lineLimit(2)
+                    }
                     
                     Spacer()
                     
-                    Text("\(Int(challenge.progressFraction * 100))%")
-                        .font(.system(size: 13, weight: .bold))
+                    Image(systemName: "flag.fill")
+                        .font(.system(size: 24))
                         .foregroundColor(.taqvoCTA)
                 }
                 
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.2))
-                            .frame(height: 8)
-                            .cornerRadius(4)
+                // Progress
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Goal: \(String(format: "%.0f km", challenge.goalDistanceMeters/1000.0))")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.taqvoAccentText)
                         
-                        Rectangle()
-                            .fill(Color.taqvoCTA)
-                            .frame(width: geometry.size.width * CGFloat(challenge.progressFraction), height: 8)
-                            .cornerRadius(4)
+                        Spacer()
+                        
+                        Text("\(Int(challenge.progressFraction * 100))%")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.taqvoCTA)
                     }
+                    
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.2))
+                                .frame(height: 8)
+                                .cornerRadius(4)
+                            
+                            Rectangle()
+                                .fill(Color.taqvoCTA)
+                                .frame(width: geometry.size.width * CGFloat(challenge.progressFraction), height: 8)
+                                .cornerRadius(4)
+                        }
+                    }
+                    .frame(height: 8)
                 }
-                .frame(height: 8)
-            }
-            
-            // Join/Leave Button
-            Button {
-                community.toggleJoin(challengeID: challenge.id)
-                community.refreshProgress(from: store)
-                if community.challenges.first(where: { $0.id == challenge.id })?.isJoined == true {
-                    appState.activityIntent = .run
-                    appState.goalIntentType = .distance
-                    appState.goalIntentMeters = 5000
-                    appState.linkedChallengeTitle = challenge.title
-                    appState.linkedChallengeIsPublic = challenge.isPublic
-                    appState.navigateToActivity = true
+                
+                // Join/Leave Button
+                Button {
+                    community.toggleJoin(challengeID: challenge.id)
+                    community.refreshProgress(from: store)
+                    if community.challenges.first(where: { $0.id == challenge.id })?.isJoined == true {
+                        appState.activityIntent = .run
+                        appState.goalIntentType = .distance
+                        appState.goalIntentMeters = 5000
+                        appState.linkedChallengeTitle = challenge.title
+                        appState.linkedChallengeIsPublic = challenge.isPublic
+                        appState.navigateToActivity = true
+                    }
+                } label: {
+                    Text(challenge.isJoined ? "Leave Challenge" : "Join Challenge")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(challenge.isJoined ? .red : .black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(challenge.isJoined ? Color.red.opacity(0.1) : Color.taqvoCTA)
+                        .cornerRadius(22)
                 }
-            } label: {
-                Text(challenge.isJoined ? "Leave Challenge" : "Join Challenge")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(challenge.isJoined ? .red : .black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-                    .background(challenge.isJoined ? Color.red.opacity(0.1) : Color.taqvoCTA)
-                    .cornerRadius(22)
             }
+            .padding(20)
         }
-        .padding(20)
         .background(Color.black.opacity(0.2))
         .cornerRadius(16)
+    }
+    
+    private var gradientPlaceholder: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [
+                        Color.purple.opacity(0.6),
+                        Color.blue.opacity(0.4)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .frame(height: 180)
     }
     
     private var leaderboardContent: some View {
@@ -2084,6 +2890,8 @@ struct CreateChallengeSheet: View {
     @State private var isPublic: Bool = true
     @State private var creating: Bool = false
     @State private var errorMessage: String?
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var selectedPhoto: UIImage?
 
     var body: some View {
         ZStack {
@@ -2125,6 +2933,63 @@ struct CreateChallengeSheet: View {
                 // Content
                 ScrollView {
                     VStack(spacing: 24) {
+                        // Image Upload Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text("CHALLENGE IMAGE")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.taqvoAccentText)
+                                
+                                Text("(Required)")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.red.opacity(0.8))
+                            }
+                            
+                            PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                                if let photo = selectedPhoto {
+                                    Image(uiImage: photo)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(height: 180)
+                                        .frame(maxWidth: .infinity)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                        .overlay(
+                                            VStack {
+                                                Spacer()
+                                                HStack {
+                                                    Spacer()
+                                                    Image(systemName: "photo.circle.fill")
+                                                        .font(.system(size: 28))
+                                                        .foregroundColor(.white)
+                                                        .padding(10)
+                                                        .background(Color.black.opacity(0.5))
+                                                        .clipShape(Circle())
+                                                        .padding(12)
+                                                }
+                                            }
+                                        )
+                                } else {
+                                    VStack(spacing: 12) {
+                                        Image(systemName: "photo.on.rectangle.angled")
+                                            .font(.system(size: 48))
+                                            .foregroundColor(.taqvoAccentText)
+                                        
+                                        Text("Upload Challenge Image")
+                                            .font(.system(size: 17, weight: .semibold))
+                                            .foregroundColor(.taqvoTextDark)
+                                        
+                                        Text("Required for all challenges")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(.taqvoAccentText)
+                                    }
+                                    .frame(height: 180)
+                                    .frame(maxWidth: .infinity)
+                                    .background(Color.black.opacity(0.2))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                }
+                            }
+                        }
+                        
                         // Details Section
                         VStack(alignment: .leading, spacing: 12) {
                             Text("DETAILS")
@@ -2272,10 +3137,20 @@ struct CreateChallengeSheet: View {
                 }
             }
         }
+        .onChange(of: selectedPhotoItem) { _, newItem in
+            Task {
+                if let data = try? await newItem?.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    await MainActor.run {
+                        selectedPhoto = image
+                    }
+                }
+            }
+        }
     }
 
     private var isValid: Bool {
-        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && endDate >= startDate && goalKm > 0
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && endDate >= startDate && goalKm > 0 && selectedPhoto != nil
     }
 
     private func submit() {
@@ -2283,6 +3158,13 @@ struct CreateChallengeSheet: View {
         errorMessage = nil
         Task {
             do {
+                // Upload image and get URL
+                var imageUrl: String? = nil
+                if let photo = selectedPhoto {
+                    let challengeId = UUID()
+                    imageUrl = try await ProfileService.shared.uploadChallengeImage(photo, challengeId: challengeId)
+                }
+                
                 try await community.createChallenge(
                     title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                     detail: detail.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -2290,6 +3172,7 @@ struct CreateChallengeSheet: View {
                     endDate: Calendar.current.startOfDay(for: endDate),
                     goalDistanceMeters: goalKm * 1000.0,
                     isPublic: isPublic,
+                    imageUrl: imageUrl,
                     autoJoin: true
                 )
                 await MainActor.run {

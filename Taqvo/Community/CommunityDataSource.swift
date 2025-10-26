@@ -6,7 +6,7 @@ protocol CommunityDataSource {
     func loadLeaderboard() async throws -> [LeaderboardEntry]
     func setJoinState(challengeID: UUID, isJoined: Bool) async throws
     func uploadDailyContributions(challengeID: UUID, items: [SupabaseCommunityDataSource.ContributionUpload]) async throws
-    func createChallenge(title: String, detail: String, startDate: Date, endDate: Date, goalDistanceMeters: Double, isPublic: Bool) async throws -> Challenge
+    func createChallenge(title: String, detail: String, startDate: Date, endDate: Date, goalDistanceMeters: Double, isPublic: Bool, imageUrl: String?) async throws -> Challenge
     func deleteChallenge(challengeID: UUID) async throws
     func canDeleteChallenge(challengeID: UUID) async -> Bool
 
@@ -40,7 +40,7 @@ final class MockCommunityDataSource: CommunityDataSource {
 
     func uploadDailyContributions(challengeID: UUID, items: [SupabaseCommunityDataSource.ContributionUpload]) async throws { _ = (challengeID, items) }
 
-    func createChallenge(title: String, detail: String, startDate: Date, endDate: Date, goalDistanceMeters: Double, isPublic: Bool) async throws -> Challenge {
+    func createChallenge(title: String, detail: String, startDate: Date, endDate: Date, goalDistanceMeters: Double, isPublic: Bool, imageUrl: String?) async throws -> Challenge {
         let currentUserId = await SupabaseAuthManager.shared.userId.flatMap { UUID(uuidString: $0) }
         let username = await ProfileService.shared.currentProfile?.username ?? "Unknown User"
         return Challenge(
@@ -54,7 +54,8 @@ final class MockCommunityDataSource: CommunityDataSource {
             progressMeters: 0,
             isPublic: isPublic,
             createdBy: currentUserId,
-            createdByUsername: username
+            createdByUsername: username,
+            imageUrl: imageUrl
         )
     }
 

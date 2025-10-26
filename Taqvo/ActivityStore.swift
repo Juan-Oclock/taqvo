@@ -298,9 +298,9 @@ final class ActivityStore: ObservableObject {
             route: coords,
             startDate: summary.startDate,
             endDate: summary.endDate,
-            snapshotPNG: snapshot?.pngData(),
+            snapshotPNG: snapshot?.compressForThumbnail(),
             note: note,
-            photoPNG: photo?.pngData(),
+            photoPNG: photo?.compressForActivity(),
             title: title,
             likeCount: 0,
             likedByUserIds: [],
@@ -365,6 +365,14 @@ final class ActivityStore: ObservableObject {
         coords.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
     }
 
+    @MainActor
+    func updateActivity(_ updatedActivity: FeedActivity) {
+        if let index = activities.firstIndex(where: { $0.id == updatedActivity.id }) {
+            activities[index] = updatedActivity
+            save()
+        }
+    }
+    
     @MainActor
     func delete(activity: FeedActivity) {
         // Security check: Only allow deletion if user owns the activity

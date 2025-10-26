@@ -33,11 +33,12 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
             let is_public: Bool?
             let created_by: String?
             let created_by_username: String?
+            let image_url: String?
         }
         let rows: [Row]
         do {
             rows = try await get(path: "/rest/v1/challenges", queryItems: [
-                URLQueryItem(name: "select", value: "id,title,detail,start_date,end_date,goal_distance_meters,is_public,created_by,created_by_username"),
+                URLQueryItem(name: "select", value: "id,title,detail,start_date,end_date,goal_distance_meters,is_public,created_by,created_by_username,image_url"),
                 URLQueryItem(name: "is_public", value: "eq.true"),
                 URLQueryItem(name: "order", value: "start_date.asc")
             ])
@@ -66,7 +67,8 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
                 progressMeters: 0,
                 isPublic: r.is_public ?? true,
                 createdBy: r.created_by != nil ? UUID(uuidString: r.created_by!) : nil,
-                createdByUsername: r.created_by_username
+                createdByUsername: r.created_by_username,
+                imageUrl: r.image_url
             )
         }
     }
@@ -110,7 +112,7 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
         _ = (challengeID, items)
     }
 
-    func createChallenge(title: String, detail: String, startDate: Date, endDate: Date, goalDistanceMeters: Double, isPublic: Bool) async throws -> Challenge {
+    func createChallenge(title: String, detail: String, startDate: Date, endDate: Date, goalDistanceMeters: Double, isPublic: Bool, imageUrl: String?) async throws -> Challenge {
         guard let userIdString = await authManager.userId else {
             throw NSError(domain: "Supabase", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sign in required to create a challenge"])
         }
@@ -129,8 +131,7 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
             df.locale = Locale(identifier: "en_US_POSIX")
             df.dateFormat = "yyyy-MM-dd"
             
-            struct Row: Decodable { let id: String? }
-            let _: Row = try await post(path: "/rest/v1/challenges", jsonBody: [
+            var jsonBody: [String: Any] = [
                 "id": newId.uuidString,
                 "title": title,
                 "detail": detail,
@@ -140,7 +141,14 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
                 "is_public": isPublic,
                 "created_by": userIdString,
                 "created_by_username": username
-            ])
+            ]
+            
+            if let imageUrl = imageUrl {
+                jsonBody["image_url"] = imageUrl
+            }
+            
+            struct Row: Decodable { let id: String? }
+            let _: Row = try await post(path: "/rest/v1/challenges", jsonBody: jsonBody)
             print("DEBUG: createChallenge() - Successfully created challenge on server: \(newId)")
         } catch {
             print("DEBUG: createChallenge() - Error creating challenge: \(error)")
@@ -156,7 +164,8 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
                 progressMeters: 0,
                 isPublic: isPublic,
                 createdBy: userId,
-                createdByUsername: username
+                createdByUsername: username,
+                imageUrl: imageUrl
             )
         }
         // If server returned but no rows, return local instance
@@ -171,7 +180,8 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
             progressMeters: 0,
             isPublic: isPublic,
             createdBy: userId,
-            createdByUsername: username
+            createdByUsername: username,
+            imageUrl: imageUrl
         )
     }
 

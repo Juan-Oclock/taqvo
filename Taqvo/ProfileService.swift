@@ -252,9 +252,11 @@ final class ProfileService: ObservableObject {
             throw NSError(domain: "ProfileService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Authentication required"])
         }
         
-        guard let imageData = image.jpegData(compressionQuality: 0.85) else {
+        guard let imageData = image.compressForAvatar() else {
             throw NSError(domain: "ProfileService", code: 400, userInfo: [NSLocalizedDescriptionKey: "Failed to process image"])
         }
+        
+        print("📸 Avatar compressed: \(String(format: "%.1f", ImageCompressor.sizeInKB(imageData))) KB")
         
         let bucket = "avatars"
         let filename = "avatar-\(userId)-\(Int(Date().timeIntervalSince1970)).jpg"
@@ -273,14 +275,55 @@ final class ProfileService: ObservableObject {
             throw NSError(domain: "ProfileService", code: code, userInfo: [NSLocalizedDescriptionKey: "Failed to upload image: \(msg)"])
         }
         
-        let publicURL = baseURL.appendingPathComponent("/storage/v1/object/public/\(bucket)/\(userId)/\(filename)").absoluteString
+        // Construct public URL
+        let publicURL = "\(urlString)/storage/v1/object/public/\(bucket)/\(userId)/\(filename)"
+        print("✅ Avatar uploaded: \(publicURL)")
+        
         return publicURL
     }
     
-    // MARK: - Cache Management
+    // MARK: - Challenge Image Upload
     
-    func clearCache() {
-        profileCache.removeAll()
+    func uploadChallengeImage(_ image: UIImage, challengeId: UUID) async throws -> String {
+        guard let info = Bundle.main.infoDictionary,
+              let urlString = info["SUPABASE_URL"] as? String,
+              let anon = info["SUPABASE_ANON_KEY"] as? String,
+              let baseURL = URL(string: urlString) else {
+            throw NSError(domain: "ProfileService", code: 500, userInfo: [NSLocalizedDescriptionKey: "Missing Supabase configuration"])
+        }
+        
+        guard let token = await authManager.getValidAccessToken() else {
+            throw NSError(domain: "ProfileService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Authentication required"])
+        }
+        
+        guard let imageData = image.compressForActivity() else {
+            throw NSError(domain: "ProfileService", code: 400, userInfo: [NSLocalizedDescriptionKey: "Failed to process image"])
+        }
+        
+        print("📸 Challenge image compressed: \(String(format: "%.1f", ImageCompressor.sizeInKB(imageData))) KB")
+        
+        let bucket = "Challenges"  // Match the bucket name exactly (case-sensitive)
+        let filename = "challenge-\(challengeId.uuidString)-\(Int(Date().timeIntervalSince1970)).jpg"
+        let storageURL = baseURL.appendingPathComponent("/storage/v1/object/\(bucket)/\(filename)")
+        var request = URLRequest(url: storageURL)
+        request.httpMethod = "POST"
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.setValue(anon, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = imageData
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let msg = String(data: data, encoding: .utf8) ?? "Unknown error"
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 500
+            throw NSError(domain: "ProfileService", code: code, userInfo: [NSLocalizedDescriptionKey: "Failed to upload challenge image: \(msg)"])
+        }
+        
+        // Construct public URL
+        let publicURL = "\(urlString)/storage/v1/object/public/\(bucket)/\(filename)"
+        print("✅ Challenge image uploaded: \(publicURL)")
+        
+        return publicURL
     }
     
     func getCachedProfile(userId: String) -> UserProfile? {
