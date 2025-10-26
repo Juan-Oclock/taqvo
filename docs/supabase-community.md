@@ -69,6 +69,7 @@ create table if not exists public.activities (
   ended_at timestamptz,
   distance_meters bigint not null default 0,
   source text check (source in ('device','import','manual')),
+  title text,
   created_at timestamptz default now()
 );
 

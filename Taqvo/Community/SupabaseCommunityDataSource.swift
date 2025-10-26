@@ -245,6 +245,7 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
         let ended_at: String?
         let distance_meters: Int
         let source: String
+        let title: String?
     }
     
     struct ActivityUploadResponse: Codable {
@@ -256,6 +257,7 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
         let ended_at: String?
         let distance_meters: Int?
         let source: String?
+        let title: String?
     }
     
     func uploadActivity(_ activity: FeedActivity) async throws {
@@ -271,7 +273,8 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
             started_at: ISO8601DateFormatter().string(from: activity.startDate),
             ended_at: ISO8601DateFormatter().string(from: activity.endDate),
             distance_meters: Int(activity.distanceMeters),
-            source: "device"
+            source: "device",
+            title: activity.title
         )
         
         do {
@@ -283,7 +286,8 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
                 "started_at": upload.started_at,
                 "ended_at": upload.ended_at,
                 "distance_meters": upload.distance_meters,
-                "source": upload.source
+                "source": upload.source,
+                "title": upload.title as Any
             ])
         } catch {
             // If offline or server error, we'll retry later
@@ -298,7 +302,7 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
         
         do {
             let activities: [ActivityUpload] = try await get(path: "/rest/v1/activities", queryItems: [
-                URLQueryItem(name: "select", value: "id,user_id,started_at,ended_at,distance_meters,source"),
+                URLQueryItem(name: "select", value: "id,user_id,started_at,ended_at,distance_meters,source,title"),
                 URLQueryItem(name: "user_id", value: "eq.\(userId)"),
                 URLQueryItem(name: "order", value: "started_at.desc")
             ])

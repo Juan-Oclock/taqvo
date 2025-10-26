@@ -1425,7 +1425,7 @@ struct FeedView: View {
                                     .font(.system(size: 12, weight: .semibold))
                                     .foregroundColor(.black)
                                 
-                                Text(title.uppercased())
+                                Text(activityTypeName(for: activity.kind).uppercased())
                                     .font(.system(size: 11, weight: .bold))
                                     .foregroundColor(.black)
                             }
@@ -1475,13 +1475,11 @@ struct FeedView: View {
                 
                 // Stats Section
                 VStack(alignment: .leading, spacing: 12) {
-                    // Activity title
-                    if let title = activity.title, !title.isEmpty {
-                        Text(title)
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(.white)
-                            .lineLimit(2)
-                    }
+                    // Activity title - always show either custom title or default
+                    Text(activity.title ?? activityTypeName(for: activity.kind))
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
                     
                     // Distance - Hero metric
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
