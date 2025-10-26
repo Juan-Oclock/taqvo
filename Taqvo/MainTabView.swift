@@ -10,6 +10,7 @@ import UIKit
 import Charts
 import PhotosUI
 import CoreLocation
+import MapKit
 
 struct MainTabView: View {
     @EnvironmentObject var appState: AppState
@@ -1083,7 +1084,7 @@ struct FeedView: View {
                         // Profile Header
                         profileHeaderSection
                             .padding(.horizontal, 16)
-                            .padding(.top, 8)
+                            .padding(.top, 30)
                         
                         // Summary Activity
                         summaryActivitySection
@@ -1104,10 +1105,12 @@ struct FeedView: View {
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color.taqvoBackgroundDark, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Text("TAQVO")
-                        .font(.system(size: 16, weight: .bold))
+                    Text("taqvo")
+                        .font(.system(size: 20, weight: .heavy))
                         .foregroundColor(.taqvoCTA)
                         .kerning(1.5)
                 }
@@ -1115,18 +1118,10 @@ struct FeedView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 16) {
                         Button {
-                            // Add action
-                        } label: {
-                            Image(systemName: "plus.circle")
-                                .font(.system(size: 20))
-                                .foregroundColor(.taqvoTextDark)
-                        }
-                        
-                        Button {
                             // Search action
                         } label: {
                             Image(systemName: "magnifyingglass")
-                                .font(.system(size: 20))
+                                .font(.system(size: 18))
                                 .foregroundColor(.taqvoTextDark)
                         }
                         
@@ -1134,7 +1129,7 @@ struct FeedView: View {
                             // Notifications action
                         } label: {
                             Image(systemName: "bell")
-                                .font(.system(size: 20))
+                                .font(.system(size: 18))
                                 .foregroundColor(.taqvoTextDark)
                         }
                         
@@ -1142,7 +1137,7 @@ struct FeedView: View {
                             // Settings action
                         } label: {
                             Image(systemName: "gearshape")
-                                .font(.system(size: 20))
+                                .font(.system(size: 18))
                                 .foregroundColor(.taqvoTextDark)
                         }
                     }
@@ -1300,48 +1295,46 @@ struct FeedView: View {
     @ViewBuilder
     private var summaryCardsView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 16) {
+            LazyHStack(spacing: 22) {
                 if recentActivities.isEmpty {
                     emptyActivityCard()
                 } else {
-                    ForEach(recentActivities) { activity in
+                    ForEach(Array(recentActivities.enumerated()), id: \.element.id) { index, activity in
                         GeometryReader { geometry in
                             let minX = geometry.frame(in: .global).minX
+                            let midX = UIScreen.main.bounds.width / 2
+                            let cardCenter = minX + (342 / 2)
+                            let distance = abs(cardCenter - midX)
                             
-                            // Calculate distance from leading edge (left side)
-                            let distanceFromLeading = max(0, minX - 16)
-                            
-                            // Normalize to 0-1 range (0 = at leading edge, 1 = far right)
-                            let normalizedDistance = min(1.0, distanceFromLeading / 350.0)
-                            
-                            // Calculate scale (1.0 at leading edge, 0.90 when far)
-                            let scale = 1.0 - (normalizedDistance * 0.10)
-                            
-                            // Calculate opacity (only fade cards that are really far)
-                            let opacity = normalizedDistance > 0.7 ? 1.0 - ((normalizedDistance - 0.7) * 0.5) : 1.0
-                            
-                            // Overlay darkness - only apply to cards much further away
-                            let overlayDarkness = normalizedDistance > 0.6 ? (normalizedDistance - 0.6) * 0.5 : 0.0
+                            // Scale: 1.0 at center, 0.92 when far (8% reduction)
+                            let normalizedDistance = min(distance / 180, 1.0)
+                            let scale = 1.0 - (normalizedDistance * 0.08)
                             
                             summaryActivityCard(
                                 icon: activityIcon(for: activity.kind),
                                 title: activity.title ?? activityTypeName(for: activity.kind),
                                 activity: activity
                             )
-                            .scaleEffect(scale)
-                            .opacity(opacity)
-                            .overlay(
-                                Color.black.opacity(overlayDarkness)
-                                    .allowsHitTesting(false)
-                            )
-                            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: scale)
+                            .scaleEffect(scale, anchor: .leading)
+                            .opacity(0.5 + (scale * 0.5)) // Fade slightly when not centered
+                            .allowsHitTesting(true)
+                            .zIndex(scale > 0.95 ? 1 : 0) // Higher z-index for centered card
                         }
-                        .frame(width: 285, height: 280)
+                        .frame(width: 342, height: 408)
+                        .contentShape(Rectangle())
+                        .scrollTransition { content, phase in
+                            content
+                                .scaleEffect(phase.isIdentity ? 1.0 : 0.92, anchor: .leading)
+                                .opacity(phase.isIdentity ? 1.0 : 0.80)
+                        }
                     }
                 }
             }
-            .padding(.horizontal, 16)
+            .scrollTargetLayout()
+            .padding(.leading, 16)
+            .padding(.trailing, 80)
         }
+        .scrollTargetBehavior(.viewAligned)
     }
     
     private func activityIcon(for kind: ActivityKind) -> String {
@@ -1371,23 +1364,269 @@ struct FeedView: View {
     }
     
     private func summaryActivityCard(icon: String, title: String, activity: FeedActivity) -> some View {
-        VStack(spacing: 0) {
-            cardHeader(icon: icon, title: title)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    selectedActivity = activity
+        ZStack(alignment: .topLeading) {
+            // Background - Map, Photo, or Snapshot
+            if let photoData = activity.photoPNG, let uiImage = UIImage(data: photoData) {
+                // User uploaded photo with polyline overlay
+                ZStack {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 342, height: 408)
+                    
+                    // Overlay polyline on photo if route exists
+                    if !activity.route.isEmpty {
+                        let coordinates = activity.route.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+                        Map(position: .constant(.region(mapRegion(for: coordinates)))) {
+                            MapPolyline(coordinates: coordinates)
+                                .stroke(Color.taqvoCTA, lineWidth: 3)
+                        }
+                        .mapStyle(.standard(elevation: .flat, emphasis: .muted))
+                        .allowsHitTesting(false)
+                        .frame(width: 342, height: 408)
+                        .opacity(0.8)
+                    }
                 }
+            } else if let snapshotData = activity.snapshotPNG, let uiImage = UIImage(data: snapshotData) {
+                // Map snapshot
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 342, height: 408)
+            } else {
+                activityMapBackground(activity: activity)
+            }
             
-            cardStatsGrid(activity: activity)
-                .padding(12)
+            // Dark gradient overlay for text readability
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.black.opacity(0.2),
+                            Color.black.opacity(0.6),
+                            Color.black.opacity(0.85)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+            
+            // Content overlay
+            VStack(alignment: .leading, spacing: 0) {
+                // Header with activity type badge and chevron - entire area tappable
+                Button {
+                    selectedActivity = activity
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 8) {
+                            // Activity type badge
+                            HStack(spacing: 6) {
+                                Image(systemName: icon)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(.black)
+                                
+                                Text(title.uppercased())
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.black)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.taqvoCTA)
+                            .clipShape(Capsule())
+                            
+                            // Milestone indicator - show for all activities
+                            if activity.distanceMeters > 0 { // Show progress to 5K
+                                HStack(spacing: 8) {
+                                    // Circular progress indicator
+                                    ZStack {
+                                        Circle()
+                                            .stroke(Color.white.opacity(0.3), lineWidth: 3)
+                                            .frame(width: 28, height: 28)
+                                        
+                                        Circle()
+                                            .trim(from: 0, to: min(activity.distanceMeters / 5000, 1.0))
+                                            .stroke(Color.taqvoCTA, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                                            .frame(width: 28, height: 28)
+                                            .rotationEffect(.degrees(-90))
+                                    }
+                                    
+                                    let progress = min(activity.distanceMeters / 5000, 1.0) * 100
+                                    Text(String(format: "%.0f%% to 5K", progress))
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(.white)
+                                }
+                            }
+                        }
+                        
+                        Spacer()
+                        
+                        // Chevron
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.yellow)
+                            .padding(8)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(16)
+                
+                Spacer()
+                
+                // Stats Section
+                VStack(alignment: .leading, spacing: 12) {
+                    // Activity title
+                    if let title = activity.title, !title.isEmpty {
+                        Text(title)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(2)
+                    }
+                    
+                    // Distance - Hero metric
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(String(format: "%.2f", activity.distanceMeters / 1000))
+                            .font(.system(size: 48, weight: .bold))
+                            .foregroundColor(.white)
+                        Text("km")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                    
+                    // Duration
+                    HStack(spacing: 8) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 14))
+                            .foregroundColor(.taqvoCTA)
+                        Text(ActivityTrackingViewModel.formattedDuration(activity.durationSeconds))
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.white)
+                    }
+                    
+                    Divider()
+                        .background(Color.white.opacity(0.2))
+                        .padding(.vertical, 4)
+                    
+                    // Social actions with proper buttons
+                    HStack(spacing: 20) {
+                        // Like Button
+                        Button {
+                            handleLike(activity: activity)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: activity.likedByUserIds.contains(SupabaseAuthManager.shared.userId ?? "") ? "heart.fill" : "heart")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(activity.likedByUserIds.contains(SupabaseAuthManager.shared.userId ?? "") ? .red : .white.opacity(0.7))
+                                
+                                if activity.likeCount > 0 {
+                                    Text("\(activity.likeCount)")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.white.opacity(0.7))
+                                }
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        
+                        // Comment Button
+                        Button {
+                            showingComments = activity
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "bubble.left")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white.opacity(0.7))
+                                
+                                if activity.comments.count > 0 {
+                                    Text("\(activity.comments.count)")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.white.opacity(0.7))
+                                }
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        
+                        Spacer()
+                        
+                        // Date
+                        Text(activity.startDate.formatted(date: .abbreviated, time: .omitted))
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                }
+                .padding(16)
+            }
         }
-        .frame(width: 285)
-        .background(Color(hex: "#202020"))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color(hex: "#343434"), lineWidth: 1)
+        .frame(width: 342, height: 408)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+    
+    @ViewBuilder
+    private func activityMapBackground(activity: FeedActivity) -> some View {
+        let coordinates = activity.route.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+        
+        if !coordinates.isEmpty {
+            // Map with route polyline - zoomed to fit entire route
+            Map(position: .constant(.region(mapRegion(for: coordinates)))) {
+                MapPolyline(coordinates: coordinates)
+                    .stroke(Color.taqvoCTA, lineWidth: 3)
+            }
+            .mapStyle(.standard(elevation: .flat))
+            .disabled(true) // Disable interaction for better scroll performance
+            .frame(width: 342, height: 408)
+        } else {
+            // Gradient fallback when no route
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: activityGradientColors(for: activity.kind),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 342, height: 408)
+        }
+    }
+    
+    private func mapRegion(for coordinates: [CLLocationCoordinate2D]) -> MKCoordinateRegion {
+        guard !coordinates.isEmpty else {
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
+                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            )
+        }
+        
+        let latitudes = coordinates.map { $0.latitude }
+        let longitudes = coordinates.map { $0.longitude }
+        
+        let minLat = latitudes.min() ?? 0
+        let maxLat = latitudes.max() ?? 0
+        let minLon = longitudes.min() ?? 0
+        let maxLon = longitudes.max() ?? 0
+        
+        let center = CLLocationCoordinate2D(
+            latitude: (minLat + maxLat) / 2,
+            longitude: (minLon + maxLon) / 2
         )
+        
+        let span = MKCoordinateSpan(
+            latitudeDelta: max((maxLat - minLat) * 1.5, 0.005),
+            longitudeDelta: max((maxLon - minLon) * 1.5, 0.005)
+        )
+        
+        return MKCoordinateRegion(center: center, span: span)
+    }
+    
+    private func activityGradientColors(for kind: ActivityKind) -> [Color] {
+        switch kind {
+        case .run:
+            return [Color.orange.opacity(0.7), Color.red.opacity(0.5)]
+        case .walk:
+            return [Color.blue.opacity(0.7), Color.cyan.opacity(0.5)]
+        case .trailRun:
+            return [Color.orange.opacity(0.7), Color.purple.opacity(0.5)]
+        case .hiking:
+            return [Color.green.opacity(0.7), Color.teal.opacity(0.5)]
+        }
     }
     
     private func cardHeader(icon: String, title: String) -> some View {
@@ -1579,37 +1818,261 @@ struct FeedView: View {
                 }
             }
             
+            // Fitness-style card
             VStack(spacing: 0) {
                 // Header
                 HStack {
                     Text("This week")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.taqvoTextDark)
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(.white)
                     
                     Spacer()
                     
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 14))
-                        .foregroundColor(.taqvoAccentText)
+                        .font(.system(size: 16))
+                        .foregroundColor(.white.opacity(0.6))
                 }
-                .padding(16)
+                .padding(20)
                 
-                // Graph
-                weeklyGraphView
-                    .frame(height: 100)
-                    .padding(.horizontal, 16)
+                // Top metrics row
+                HStack(spacing: 20) {
+                    // Circular progress
+                    ZStack {
+                        Circle()
+                            .stroke(Color.white.opacity(0.2), lineWidth: 6)
+                            .frame(width: 70, height: 70)
+                        
+                        Circle()
+                            .trim(from: 0, to: CGFloat(currentStreak) / 7.0)
+                            .stroke(Color.taqvoCTA, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                            .frame(width: 70, height: 70)
+                            .rotationEffect(.degrees(-90))
+                        
+                        Text("\(currentStreak)/7")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    
+                    // Streak info
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(currentStreak) Run Streak")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.white)
+                        
+                        HStack(spacing: 4) {
+                            Image(systemName: "chart.line.uptrend.xyaxis")
+                                .font(.system(size: 14))
+                            Text(weeklyChangeText)
+                                .font(.system(size: 14))
+                        }
+                        .foregroundColor(.white.opacity(0.7))
+                    }
+                    
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
                 
-                // Days
-                weekDaysView
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
+                // Area chart
+                fitnessAreaChartView
+                    .frame(height: 140)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 20)
+                
+                // Stats grid
+                HStack(spacing: 0) {
+                    statColumn(value: String(format: "%.0f kcal", weeklyCalories), label: "Calories")
+                    
+                    Divider()
+                        .background(Color.white.opacity(0.2))
+                        .frame(height: 40)
+                    
+                    statColumn(value: String(format: "%.1f km", weeklyDistance / 1000), label: "Distance")
+                    
+                    Divider()
+                        .background(Color.white.opacity(0.2))
+                        .frame(height: 40)
+                    
+                    statColumn(value: weeklyDurationText, label: "Avg. pace")
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 20)
             }
             .background(Color(hex: "#202020"))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color(hex: "#343434"), lineWidth: 1)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
+    
+    // Fitness area chart with gradient fill
+    private var fitnessAreaChartView: some View {
+        GeometryReader { geometry in
+            let activities = thisWeekActivities
+            let maxDistance = max(activities.map { $0.distanceMeters }.max() ?? 1000, 1.0)
+            
+            guard geometry.size.width > 0 && geometry.size.height > 0 else {
+                return AnyView(EmptyView())
+            }
+            
+            return AnyView(
+                ZStack(alignment: .topLeading) {
+                    // Area fill with gradient
+                    Path { path in
+                        let width = geometry.size.width
+                        let height = geometry.size.height
+                        
+                        guard width.isFinite && height.isFinite && !activities.isEmpty else { return }
+                        
+                        path.move(to: CGPoint(x: 0, y: height))
+                        
+                        for (index, activity) in activities.enumerated() {
+                            let x = (CGFloat(index) / CGFloat(max(activities.count - 1, 1))) * width
+                            let ratio = activity.distanceMeters / maxDistance
+                            let y = height - (CGFloat(ratio) * height * 0.7)
+                            
+                            guard x.isFinite && y.isFinite else { continue }
+                            
+                            if index == 0 {
+                                path.move(to: CGPoint(x: x, y: y))
+                            } else {
+                                path.addLine(to: CGPoint(x: x, y: y))
+                            }
+                        }
+                        
+                        // Close the path to create filled area
+                        path.addLine(to: CGPoint(x: width, y: height))
+                        path.addLine(to: CGPoint(x: 0, y: height))
+                        path.closeSubpath()
+                    }
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.taqvoCTA.opacity(0.6),
+                                Color.taqvoCTA.opacity(0.3),
+                                Color.taqvoCTA.opacity(0.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    
+                    // Line stroke
+                    Path { path in
+                        let width = geometry.size.width
+                        let height = geometry.size.height
+                        
+                        guard width.isFinite && height.isFinite && !activities.isEmpty else { return }
+                        
+                        for (index, activity) in activities.enumerated() {
+                            let x = (CGFloat(index) / CGFloat(max(activities.count - 1, 1))) * width
+                            let ratio = activity.distanceMeters / maxDistance
+                            let y = height - (CGFloat(ratio) * height * 0.7)
+                            
+                            guard x.isFinite && y.isFinite else { continue }
+                            
+                            if index == 0 {
+                                path.move(to: CGPoint(x: x, y: y))
+                            } else {
+                                path.addLine(to: CGPoint(x: x, y: y))
+                            }
+                        }
+                    }
+                    .stroke(Color.taqvoCTA, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                    
+                    // Current point indicator
+                    if let lastActivity = activities.last, activities.count > 0 {
+                        let lastIndex = activities.count - 1
+                        let x = (CGFloat(lastIndex) / CGFloat(max(activities.count - 1, 1))) * geometry.size.width
+                        let ratio = lastActivity.distanceMeters / maxDistance
+                        let y = geometry.size.height - (CGFloat(ratio) * geometry.size.height * 0.7)
+                        
+                        if x.isFinite && y.isFinite {
+                            Circle()
+                                .fill(Color.taqvoCTA)
+                                .frame(width: 12, height: 12)
+                                .position(x: x, y: y)
+                        }
+                    }
+                }
             )
+        }
+    }
+    
+    private func statColumn(value: String, label: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(.white)
+            
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundColor(.white.opacity(0.6))
+        }
+        .frame(maxWidth: .infinity)
+    }
+    
+    // Computed properties for weekly stats
+    private var currentStreak: Int {
+        // Calculate current streak from activities
+        let sortedActivities = store.activities.sorted { $0.startDate > $1.startDate }
+        var streak = 0
+        var currentDate = Date()
+        
+        for activity in sortedActivities {
+            let calendar = Calendar.current
+            if calendar.isDate(activity.startDate, inSameDayAs: currentDate) ||
+               calendar.isDate(activity.startDate, inSameDayAs: calendar.date(byAdding: .day, value: -1, to: currentDate)!) {
+                streak += 1
+                currentDate = activity.startDate
+            } else {
+                break
+            }
+        }
+        
+        return min(streak, 7)
+    }
+    
+    private var weeklyChangeText: String {
+        let thisWeek = thisWeekActivities.count
+        let lastWeek = lastWeekActivities.count
+        
+        if lastWeek == 0 {
+            return "+100% vs last week"
+        }
+        
+        let change = Double(thisWeek - lastWeek) / Double(lastWeek) * 100
+        return String(format: "%+.1f%% vs last week", change)
+    }
+    
+    private var weeklyCalories: Double {
+        thisWeekActivities.reduce(0.0) { $0 + $1.caloriesKilocalories }
+    }
+    
+    private var weeklyDistance: Double {
+        thisWeekActivities.reduce(0.0) { $0 + $1.distanceMeters }
+    }
+    
+    private var weeklyDurationText: String {
+        let totalSeconds = thisWeekActivities.reduce(0.0) { $0 + $1.durationSeconds }
+        let totalDistance = weeklyDistance
+        
+        if totalDistance == 0 {
+            return "0'00\""
+        }
+        
+        let paceSecondsPerKm = totalSeconds / (totalDistance / 1000)
+        let minutes = Int(paceSecondsPerKm) / 60
+        let seconds = Int(paceSecondsPerKm) % 60
+        
+        return String(format: "%d'%02d\"", minutes, seconds)
+    }
+    
+    private var lastWeekActivities: [FeedActivity] {
+        let calendar = Calendar.current
+        let now = Date()
+        let twoWeeksAgo = calendar.date(byAdding: .day, value: -14, to: now)!
+        let oneWeekAgo = calendar.date(byAdding: .day, value: -7, to: now)!
+        
+        return store.activities.filter { activity in
+            activity.startDate >= twoWeeksAgo && activity.startDate < oneWeekAgo
         }
     }
     
@@ -1767,7 +2230,7 @@ struct FeedView: View {
                         image
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: 241, height: 171)
+                            .frame(width: 285, height: 280)
                     case .failure(_), .empty:
                         gradientBackground
                     @unknown default:
@@ -1784,9 +2247,10 @@ struct FeedView: View {
                     LinearGradient(
                         colors: [
                             Color.clear,
-                            Color.black.opacity(0.7)
+                            Color.black.opacity(0.4),
+                            Color.black.opacity(0.9)
                         ],
-                        startPoint: .center,
+                        startPoint: .top,
                         endPoint: .bottom
                     )
                 )
@@ -1798,7 +2262,16 @@ struct FeedView: View {
                 Text(challenge.title)
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(.white)
-                    .lineLimit(2)
+                    .lineLimit(1)
+                
+                // Description - 2 lines
+                if !challenge.detail.isEmpty {
+                    Text(challenge.detail)
+                        .font(.system(size: 13))
+                        .foregroundColor(.white.opacity(0.9))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 
                 Button {
                     selectedChallenge = challenge
@@ -1812,9 +2285,9 @@ struct FeedView: View {
                         .clipShape(Capsule())
                 }
             }
-            .padding(14)
+            .padding(16)
         }
-        .frame(width: 241, height: 171)
+        .frame(width: 285, height: 280)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
     
