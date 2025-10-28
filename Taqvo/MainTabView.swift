@@ -148,95 +148,95 @@ struct ActivityView: View {
     // MARK: - Modern UI Views
     
     private var modernActivitySetup: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // Header
-                VStack(spacing: 12) {
-                    Text("Ready to Move?")
-                        .font(.system(size: 32, weight: .bold))
-                        .foregroundColor(.taqvoTextDark)
-                    
-                    Text("Set up your activity")
-                        .font(.system(size: 16))
-                        .foregroundColor(.taqvoAccentText)
-                    
-                    // Weather info (only show if available)
-                    if weatherVM.temperatureCelsius != nil {
-                        HStack(spacing: 8) {
-                            Image(systemName: weatherVM.weatherConditionIcon)
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.taqvoCTA)
-                            
-                            Text(weatherVM.formattedWeatherString)
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.taqvoAccentText)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(Color.black.opacity(0.1))
-                        .cornerRadius(20)
-                    }
-                }
-                .padding(.top, 40)
+        VStack(spacing: 0) {
+            // Header - Compact
+            VStack(spacing: 8) {
+                Text("Ready to Move?")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.taqvoTextDark)
                 
-                // Activity Type Cards
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Activity Type")
-                        .font(.system(size: 14, weight: .semibold))
+                // Weather info inline with subtitle
+                if let temp = weatherVM.temperatureCelsius {
+                    HStack(spacing: 6) {
+                        Image(systemName: weatherVM.weatherConditionIcon)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.taqvoCTA)
+                        
+                        Text(weatherVM.formattedWeatherString)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.taqvoAccentText)
+                    }
+                } else {
+                    Text("Set up your activity")
+                        .font(.system(size: 14))
                         .foregroundColor(.taqvoAccentText)
-                        .padding(.horizontal, 16)
-                    
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        activityTypeCard(type: .walk, icon: "figure.walk", color: .blue)
-                        activityTypeCard(type: .run, icon: "figure.run", color: .red)
-                        activityTypeCard(type: .trailRun, icon: "figure.run.circle", color: .orange)
-                        activityTypeCard(type: .hiking, icon: "figure.hiking", color: .green)
+                }
+            }
+            .padding(.top, 20)
+            .padding(.bottom, 16)
+                
+            // Scrollable content
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 16) {
+                    // Activity Type Cards - Compact
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Activity Type")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.taqvoAccentText)
+                            .textCase(.uppercase)
+                        
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                            activityTypeCard(type: .walk, icon: "figure.walk", color: .blue)
+                            activityTypeCard(type: .run, icon: "figure.run", color: .red)
+                            activityTypeCard(type: .trailRun, icon: "figure.run.circle", color: .orange)
+                            activityTypeCard(type: .hiking, icon: "figure.hiking", color: .green)
+                        }
                     }
                     .padding(.horizontal, 16)
-                }
                 
-                // Goal Display Card
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Your Goal")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.taqvoAccentText)
-                        .padding(.horizontal, 16)
-                    
-                    currentGoalDisplayCard
-                        .padding(.horizontal, 16)
-                }
-                
-                // Music Section
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Music")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.taqvoAccentText)
-                        .padding(.horizontal, 16)
-                    
-                    musicSelectionCard
-                        .padding(.horizontal, 16)
-                }
-                
-                // Start Button
-                Button {
-                    prepareAndStartCountdown()
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 20))
-                        Text("Start Activity")
-                            .font(.system(size: 18, weight: .bold))
+                    // Goal Display Card - Compact
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Your Goal")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.taqvoAccentText)
+                            .textCase(.uppercase)
+                        
+                        currentGoalDisplayCard
                     }
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 60)
-                    .background(Color.taqvoCTA)
-                    .cornerRadius(30)
+                    .padding(.horizontal, 16)
+                
+                    // Music Section - Compact
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Music")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.taqvoAccentText)
+                            .textCase(.uppercase)
+                        
+                        musicSelectionCard
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 20)
-                .padding(.bottom, 40)
             }
+            
+            // Start Button - Fixed at bottom
+            Button {
+                prepareAndStartCountdown()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 18))
+                    Text("Start Activity")
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(Color.taqvoCTA)
+                .cornerRadius(28)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
         }
     }
     
@@ -256,9 +256,9 @@ struct ActivityView: View {
                     .foregroundColor(activityType == type ? .taqvoTextDark : .taqvoAccentText)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 100)
+            .frame(height: 90)
             .background(activityType == type ? color.opacity(0.15) : Color.black.opacity(0.2))
-            .cornerRadius(16)
+            .cornerRadius(12)
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(activityType == type ? color : Color.clear, lineWidth: 2)
@@ -1002,6 +1002,7 @@ struct ActivityView: View {
             .navigationDestination(isPresented: $navigateToLive) {
                 LiveActivityView()
                     .environmentObject(trackingVM)
+                    .toolbar(.hidden, for: .tabBar)
             }
             .sheet(isPresented: $showPlaylistPicker) {
                 PlaylistPickerView(musicVM: musicVM)
@@ -1038,20 +1039,28 @@ struct SupportView: View {
     }
 }
 
+// MARK: - Community Models
+
+struct FriendAchievement {
+    let username: String
+    let distance: String
+    let timeAgo: String
+}
+
 struct FeedView: View {
     @EnvironmentObject var store: ActivityStore
     @EnvironmentObject var community: CommunityViewModel
     @StateObject private var profileService = ProfileService.shared
+    @StateObject private var feedService = ActivityFeedService()
     @State private var selectedActivity: FeedActivity?
     @State private var selectedFilter: FeedFilter = .all
     @State private var selectedChallenge: Challenge?
     @State private var showingComments: FeedActivity?
     
     enum FeedFilter: String, CaseIterable, Hashable {
-        case all = "View All"
-        case activity = "Activity"
-        case challenges = "Challenges"
-        case goals = "Goals"
+        case all = "All"
+        case community = "Community"
+        case mine = "Mine"
     }
     
     private var recentActivities: [FeedActivity] {
@@ -1073,34 +1082,80 @@ struct FeedView: View {
             .filter { $0.userId == currentUserId && $0.endDate >= weekAgo }
             .sorted { $0.endDate < $1.endDate }
     }
+    
+    // Filtered activities based on selected filter
+    private var filteredActivities: [FeedActivity] {
+        switch selectedFilter {
+        case .all:
+            // Show all activities (user's own + public from others)
+            let userActivities = recentActivities
+            let publicActivities = feedService.publicActivities
+            
+            // Deduplicate: if an activity exists in both, prefer publicActivities (has server counts)
+            let publicActivityIds = Set(publicActivities.map { $0.id })
+            let uniqueUserActivities = userActivities.filter { !publicActivityIds.contains($0.id) }
+            
+            // Combine and sort
+            let combined = (uniqueUserActivities + publicActivities)
+                .sorted { $0.endDate > $1.endDate }
+                .prefix(10)
+                .map { $0 }
+            
+            print("📊 filteredActivities (all): \(combined.count) activities - \(uniqueUserActivities.count) unique user + \(publicActivities.count) public")
+            return combined
+            
+        case .community:
+            // Show public activities from other users (Community feed)
+            return feedService.publicActivities
+        case .mine:
+            // Show only user's own activities
+            return recentActivities
+        }
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.taqvoBackgroundDark.ignoresSafeArea()
                 
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 32) {
-                        // Profile Header
-                        profileHeaderSection
-                            .padding(.horizontal, 16)
-                            .padding(.top, 30)
-                        
-                        // Summary Activity
-                        summaryActivitySection
-                        
-                        // Overall Status
-                        overallStatusSection
-                            .padding(.horizontal, 16)
-                        
-                        // Challenges
-                        challengesSection
-                            .padding(.horizontal, 16)
+                if feedService.isLoading && feedService.publicActivities.isEmpty {
+                    // Show loading state on first load
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .tint(.taqvoCTA)
+                            .scaleEffect(1.5)
+                        Text("Loading activities...")
+                            .foregroundColor(.taqvoAccentText)
+                            .font(.system(size: 14))
                     }
-                    .padding(.bottom, 40)
-                }
-                .refreshable {
-                    await refreshFeed()
+                } else {
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 32) {
+                            // Profile Header
+                            profileHeaderSection
+                                .padding(.horizontal, 16)
+                                .padding(.top, 30)
+                            
+                            // Summary Activity
+                            summaryActivitySection
+                            
+                            // Overall Status
+                            overallStatusSection
+                                .padding(.horizontal, 16)
+                            
+                            // Community Insights
+                            communityInsightsSection
+                                .padding(.horizontal, 16)
+                            
+                            // Challenges
+                            challengesSection
+                                .padding(.horizontal, 16)
+                        }
+                        .padding(.bottom, 40)
+                    }
+                    .refreshable {
+                        await refreshFeed()
+                    }
                 }
             }
             .navigationTitle("")
@@ -1153,6 +1208,7 @@ struct FeedView: View {
                 NavigationStack {
                     CommentsView(activityID: activity.id)
                         .environmentObject(store)
+                        .environmentObject(feedService)
                         .navigationTitle("Comments")
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar {
@@ -1170,6 +1226,59 @@ struct FeedView: View {
         .onAppear {
             Task {
                 await profileService.loadCurrentUserProfile()
+                // Load public activities on initial load for "All" and "Community" filters
+                await feedService.loadPublicActivities()
+                
+                // Sync likes and comment counts from public activities to ActivityStore
+                // This ensures user's own activities show correct counts
+                syncActivityCounts()
+            }
+        }
+        .onChange(of: feedService.lastLoadTimestamp) { _, _ in
+            // When feedService loads new data, sync counts to ActivityStore
+            syncActivityCounts()
+        }
+    }
+    
+    private func syncActivityCounts() {
+        // Update ActivityStore activities with likes and comment counts from publicActivities
+        let currentUserId = SupabaseAuthManager.shared.userId ?? ""
+        
+        for publicActivity in feedService.publicActivities {
+            if let storeActivity = store.activities.first(where: { $0.id == publicActivity.id }) {
+                // Check if counts or like status are different
+                let commentsDifferent = storeActivity.commentCount != publicActivity.commentCount
+                let likesDifferent = storeActivity.likeCount != publicActivity.likeCount
+                
+                // For like status, check if CURRENT USER's like state is different
+                let currentUserLikedInStore = storeActivity.likedByUserIds.contains(currentUserId)
+                let currentUserLikedInPublic = publicActivity.likedByUserIds.contains(currentUserId)
+                let myLikeStatusDifferent = currentUserLikedInStore != currentUserLikedInPublic
+                
+                if commentsDifferent || likesDifferent || myLikeStatusDifferent {
+                    // Create updated activity with synced counts
+                    var updatedActivity = storeActivity
+                    updatedActivity.commentCount = publicActivity.commentCount
+                    updatedActivity.likeCount = publicActivity.likeCount
+                    
+                    // Update likedByUserIds: keep current user's like status from publicActivities
+                    // This preserves the correct state for the current user only
+                    var newLikedByUserIds = storeActivity.likedByUserIds.filter { $0 != currentUserId }
+                    if currentUserLikedInPublic {
+                        newLikedByUserIds.append(currentUserId)
+                    }
+                    updatedActivity.likedByUserIds = newLikedByUserIds
+                    
+                    // Use the proper update method
+                    store.updateActivity(updatedActivity)
+                    
+                    // Debug logging
+                    print("🔄 Synced activity \(publicActivity.id):")
+                    print("   💬 Comments: \(storeActivity.commentCount) → \(publicActivity.commentCount)")
+                    print("   ❤️  Likes: \(storeActivity.likeCount) → \(publicActivity.likeCount)")
+                    print("   👤 My like status: \(currentUserLikedInStore) → \(currentUserLikedInPublic)")
+                    print("   📋 likedByUserIds: \(storeActivity.likedByUserIds) → \(newLikedByUserIds)")
+                }
             }
         }
     }
@@ -1252,6 +1361,12 @@ struct FeedView: View {
         Button {
             withAnimation(.spring(response: 0.3)) {
                 selectedFilter = filter
+                // Load public activities when All or Community filter is selected
+                if filter == .all || filter == .community {
+                    Task {
+                        await feedService.loadPublicActivities()
+                    }
+                }
             }
         } label: {
             Text(filter.rawValue)
@@ -1272,7 +1387,7 @@ struct FeedView: View {
     private var summaryActivitySection: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("Summary Activity")
+                Text(sectionTitle)
                     .font(.system(size: 22, weight: .bold))
                     .foregroundColor(.taqvoTextDark)
                 
@@ -1292,14 +1407,25 @@ struct FeedView: View {
         }
     }
     
+    private var sectionTitle: String {
+        switch selectedFilter {
+        case .all:
+            return "All Activities"
+        case .community:
+            return "Community"
+        case .mine:
+            return "My Activities"
+        }
+    }
+    
     @ViewBuilder
     private var summaryCardsView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 22) {
-                if recentActivities.isEmpty {
+                if filteredActivities.isEmpty {
                     emptyActivityCard()
                 } else {
-                    ForEach(Array(recentActivities.enumerated()), id: \.element.id) { index, activity in
+                    ForEach(Array(filteredActivities.enumerated()), id: \.element.id) { index, activity in
                         GeometryReader { geometry in
                             let minX = geometry.frame(in: .global).minX
                             let midX = UIScreen.main.bounds.width / 2
@@ -1534,8 +1660,8 @@ struct FeedView: View {
                                     .font(.system(size: 16))
                                     .foregroundColor(.white.opacity(0.7))
                                 
-                                if activity.comments.count > 0 {
-                                    Text("\(activity.comments.count)")
+                                if activity.commentCount > 0 {
+                                    Text("\(activity.commentCount)")
                                         .font(.system(size: 13))
                                         .foregroundColor(.white.opacity(0.7))
                                 }
@@ -1545,10 +1671,68 @@ struct FeedView: View {
                         
                         Spacer()
                         
-                        // Date
-                        Text(activity.startDate.formatted(date: .abbreviated, time: .omitted))
-                            .font(.system(size: 12))
-                            .foregroundColor(.white.opacity(0.6))
+                        // User profile info
+                        HStack(spacing: 8) {
+                            // Avatar - use current profile avatar if this is the current user's activity
+                            let currentUserId = SupabaseAuthManager.shared.userId
+                            let isCurrentUser = activity.userId == currentUserId
+                            let displayAvatarUrl = isCurrentUser ? (profileService.currentProfile?.avatarUrl ?? activity.avatarUrl) : activity.avatarUrl
+                            
+                            if let avatarUrl = displayAvatarUrl, !avatarUrl.isEmpty, let url = URL(string: avatarUrl) {
+                                AsyncImage(url: url) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 24, height: 24)
+                                            .clipShape(Circle())
+                                    case .failure(_):
+                                        // Failed to load, show default
+                                        Circle()
+                                            .fill(Color.gray.opacity(0.3))
+                                            .frame(width: 24, height: 24)
+                                            .overlay(
+                                                Image(systemName: "person.fill")
+                                                    .font(.system(size: 12))
+                                                    .foregroundColor(.white.opacity(0.6))
+                                            )
+                                    case .empty:
+                                        // Loading
+                                        Circle()
+                                            .fill(Color.gray.opacity(0.3))
+                                            .frame(width: 24, height: 24)
+                                    @unknown default:
+                                        Circle()
+                                            .fill(Color.gray.opacity(0.3))
+                                            .frame(width: 24, height: 24)
+                                    }
+                                }
+                            } else {
+                                // Default avatar (no URL provided)
+                                Circle()
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(width: 24, height: 24)
+                                    .overlay(
+                                        Image(systemName: "person.fill")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.white.opacity(0.6))
+                                    )
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                // Username
+                                Text(activity.username ?? "Unknown")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                
+                                // Date
+                                Text(activity.startDate.formatted(date: .abbreviated, time: .omitted))
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                        }
                     }
                 }
                 .padding(16)
@@ -1734,8 +1918,8 @@ struct FeedView: View {
                             .font(.system(size: 16))
                             .foregroundColor(.taqvoAccentText)
                         
-                        if activity.comments.count > 0 {
-                            Text("\(activity.comments.count)")
+                        if activity.commentCount > 0 {
+                            Text("\(activity.commentCount)")
                                 .font(.system(size: 13))
                                 .foregroundColor(.taqvoAccentText)
                         }
@@ -1783,18 +1967,35 @@ struct FeedView: View {
     
     private func emptyActivityCard() -> some View {
         VStack(spacing: 16) {
-            Image(systemName: "figure.run")
+            Image(systemName: selectedFilter == .community ? "person.2" : "figure.run")
                 .font(.system(size: 40))
                 .foregroundColor(.taqvoAccentText.opacity(0.5))
             
-            Text("No recent activities")
+            Text(emptyStateMessage)
                 .font(.system(size: 14))
                 .foregroundColor(.taqvoAccentText)
                 .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+            
+            if selectedFilter == .community && feedService.isLoading {
+                ProgressView()
+                    .tint(.taqvoCTA)
+            }
         }
         .frame(width: 228, height: 166)
         .background(Color.black.opacity(0.2))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    private var emptyStateMessage: String {
+        switch selectedFilter {
+        case .all:
+            return "No activities yet"
+        case .community:
+            return feedService.isLoading ? "Loading..." : "No public activities yet"
+        case .mine:
+            return "You haven't recorded any activities yet"
+        }
     }
     
     // MARK: - Overall Status Section
@@ -2180,6 +2381,290 @@ struct FeedView: View {
         .frame(maxWidth: .infinity)
     }
     
+    // MARK: - Community Insights Section
+    private var communityInsightsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Community")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(.taqvoTextDark)
+                Spacer()
+            }
+            
+            VStack(spacing: 12) {
+                // Active Friends Card
+                activeFriendsCard
+                
+                // Your Rank Card
+                userRankCard
+                
+                // Recent Achievement Card
+                recentAchievementCard
+            }
+        }
+    }
+    
+    private var activeFriendsCard: some View {
+        let subtitle = activeFriendsCount > 0 ? "Keep the momentum going!" : "Be the first to run!"
+        
+        return HStack(spacing: 16) {
+            // Icon
+            ZStack {
+                Circle()
+                    .fill(Color.taqvoCTA.opacity(0.15))
+                    .frame(width: 48, height: 48)
+                
+                Image(systemName: "figure.run.circle.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(.taqvoCTA)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(activeFriendsCount) friends ran this week")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.taqvoTextDark)
+                
+                Text(subtitle)
+                    .font(.system(size: 13))
+                    .foregroundColor(.taqvoAccentText)
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14))
+                .foregroundColor(.taqvoAccentText)
+        }
+        .padding(16)
+        .background(Color.black.opacity(0.2))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    private var userRankCard: some View {
+        return HStack(spacing: 16) {
+            // Icon
+            ZStack {
+                Circle()
+                    .fill(Color.orange.opacity(0.15))
+                    .frame(width: 48, height: 48)
+                
+                Image(systemName: "trophy.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(.orange)
+            }
+            
+            userRankContent
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14))
+                .foregroundColor(.taqvoAccentText)
+        }
+        .padding(16)
+        .background(Color.black.opacity(0.2))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    @ViewBuilder
+    private var userRankContent: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let rank = userRank {
+                Text("Your rank: #\(rank) in group")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.taqvoTextDark)
+                
+                Text("Based on this week's distance")
+                    .font(.system(size: 13))
+                    .foregroundColor(.taqvoAccentText)
+            } else {
+                Text("Complete an activity to see your rank")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.taqvoTextDark)
+                
+                Text("Start tracking to compete")
+                    .font(.system(size: 13))
+                    .foregroundColor(.taqvoAccentText)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var recentAchievementCard: some View {
+        if let achievement = recentFriendAchievement {
+            achievementCardContent(achievement: achievement)
+        } else {
+            emptyAchievementCard
+        }
+    }
+    
+    private func achievementCardContent(achievement: FriendAchievement) -> some View {
+        HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Color.purple.opacity(0.15))
+                    .frame(width: 48, height: 48)
+                
+                Image(systemName: "person.circle.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(.purple)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(achievement.username) crushed a \(achievement.distance)")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.taqvoTextDark)
+                    .lineLimit(1)
+                
+                Text(achievement.timeAgo)
+                    .font(.system(size: 13))
+                    .foregroundColor(.taqvoAccentText)
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14))
+                .foregroundColor(.taqvoAccentText)
+        }
+        .padding(16)
+        .background(Color.black.opacity(0.2))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    private var emptyAchievementCard: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Color.gray.opacity(0.15))
+                    .frame(width: 48, height: 48)
+                
+                Image(systemName: "star.circle.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(.gray)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("No recent achievements")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.taqvoTextDark)
+                
+                Text("Be the first to achieve something!")
+                    .font(.system(size: 13))
+                    .foregroundColor(.taqvoAccentText)
+            }
+            
+            Spacer()
+        }
+        .padding(16)
+        .background(Color.black.opacity(0.2))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    // MARK: - Community Data Helpers
+    
+    private var activeFriendsCount: Int {
+        let calendar = Calendar.current
+        let now = Date()
+        let weekAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
+        let currentUserId = SupabaseAuthManager.shared.userId ?? ""
+        
+        let thisWeekActivities = feedService.publicActivities.filter { activity in
+            activity.endDate >= weekAgo && activity.userId != currentUserId
+        }
+        
+        let userIds = thisWeekActivities.map { $0.userId }
+        let uniqueUserIds = Set(userIds)
+        
+        return uniqueUserIds.count
+    }
+    
+    private var userRank: Int? {
+        let calendar = Calendar.current
+        let now = Date()
+        let weekAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
+        let currentUserId = SupabaseAuthManager.shared.userId ?? ""
+        
+        let thisWeekActivities = feedService.publicActivities.filter { $0.endDate >= weekAgo }
+        let grouped = Dictionary(grouping: thisWeekActivities, by: { $0.userId })
+        
+        var userDistances: [(userId: String, distance: Double)] = []
+        for (userId, activities) in grouped {
+            let totalDistanceMeters = activities.reduce(0.0, { (sum: Double, activity: FeedActivity) -> Double in
+                return sum + activity.distanceMeters
+            })
+            let totalDistanceKm = totalDistanceMeters / 1000.0
+            userDistances.append((userId: userId, distance: totalDistanceKm))
+        }
+        
+        let sorted = userDistances.sorted { $0.distance > $1.distance }
+        
+        if let rank = sorted.firstIndex(where: { $0.userId == currentUserId }) {
+            return rank + 1
+        }
+        
+        return nil
+    }
+    
+    private var recentFriendAchievement: FriendAchievement? {
+        let currentUserId = SupabaseAuthManager.shared.userId ?? ""
+        let now = Date()
+        let dayAgo: TimeInterval = 86400
+        
+        let allActivities = feedService.publicActivities
+        let otherUsersActivities = allActivities.filter { $0.userId != currentUserId }
+        let recentActivities = otherUsersActivities.filter { activity in
+            now.timeIntervalSince(activity.endDate) < dayAgo
+        }
+        let sorted = recentActivities.sorted { $0.endDate > $1.endDate }
+        
+        let notableActivity = sorted.first(where: { $0.distanceMeters >= 10000.0 })
+        
+        if let activity = notableActivity {
+            let username = activity.username ?? "Someone"
+            let distanceKm = activity.distanceMeters / 1000.0
+            let distance = formatAchievementDistance(distanceKm)
+            let timeAgo = formatTimeAgo(activity.endDate)
+            
+            return FriendAchievement(
+                username: username,
+                distance: distance,
+                timeAgo: timeAgo
+            )
+        }
+        
+        return nil
+    }
+    
+    private func formatAchievementDistance(_ distance: Double) -> String {
+        if distance >= 42.0 {
+            return "Marathon"
+        } else if distance >= 21.0 {
+            return "Half Marathon"
+        } else if distance >= 10.0 {
+            return "10K"
+        } else if distance >= 5.0 {
+            return "5K"
+        } else {
+            return String(format: "%.1f km", distance)
+        }
+    }
+    
+    private func formatTimeAgo(_ date: Date) -> String {
+        let now = Date()
+        let interval = now.timeIntervalSince(date)
+        
+        if interval < 3600 {
+            let minutes = Int(interval / 60)
+            return "\(minutes)m ago"
+        } else if interval < 86400 {
+            let hours = Int(interval / 3600)
+            return "\(hours)h ago"
+        } else {
+            return "Today"
+        }
+    }
+    
     // MARK: - Challenges Section
     private var challengesSection: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -2322,10 +2807,13 @@ struct FeedView: View {
     private func handleLike(activity: FeedActivity) {
         guard let userId = SupabaseAuthManager.shared.userId else { return }
         
-        // Toggle like state
+        // Determine if we're liking or unliking
+        let wasLiked = activity.likedByUserIds.contains(userId)
+        
+        // Optimistically update UI - both in local store and feed service
         var updatedActivity = activity
         
-        if updatedActivity.likedByUserIds.contains(userId) {
+        if wasLiked {
             // Unlike
             updatedActivity.likedByUserIds.removeAll { $0 == userId }
             updatedActivity.likeCount = max(0, updatedActivity.likeCount - 1)
@@ -2335,16 +2823,58 @@ struct FeedView: View {
             updatedActivity.likeCount += 1
         }
         
+        // Update both local store and feed service immediately for optimistic UI
         store.updateActivity(updatedActivity)
+        feedService.updateActivity(updatedActivity)
         
-        // TODO: Persist to backend
-        // Task {
-        //     await store.toggleLike(activityId: activity.id)
-        // }
+        print("👍 Optimistic update: activity \(activity.id) likeCount: \(activity.likeCount) → \(updatedActivity.likeCount), liked: \(wasLiked) → \(!wasLiked)")
+        
+        // Sync to backend
+        Task {
+            do {
+                // Call Supabase directly to avoid double optimistic update
+                guard let supabase = SupabaseCommunityDataSource.makeFromInfoPlist(authManager: SupabaseAuthManager.shared) else {
+                    print("⚠️ Supabase not configured")
+                    return
+                }
+                
+                let isNowLiked = try await supabase.toggleLike(activityID: activity.id)
+                print("✅ Like synced to Supabase: activity \(activity.id) isNowLiked: \(isNowLiked)")
+                
+                // Reload to get the final count from server (including other users' likes)
+                try? await Task.sleep(nanoseconds: 300_000_000) // 300ms delay
+                await feedService.loadPublicActivities(limit: 20)
+                
+                // Sync the counts back to ActivityStore
+                await MainActor.run {
+                    syncActivityCounts()
+                }
+            } catch {
+                print("❌ Failed to sync like to Supabase: \(error)")
+                // Rollback optimistic update on failure
+                await MainActor.run {
+                    var revertedActivity = updatedActivity
+                    if wasLiked {
+                        // Was liked, failed to unlike - revert back to liked
+                        revertedActivity.likedByUserIds.append(userId)
+                        revertedActivity.likeCount += 1
+                    } else {
+                        // Wasn't liked, failed to like - revert back to not liked
+                        revertedActivity.likedByUserIds.removeAll { $0 == userId }
+                        revertedActivity.likeCount = max(0, revertedActivity.likeCount - 1)
+                    }
+                    store.updateActivity(revertedActivity)
+                    feedService.updateActivity(revertedActivity)
+                    print("↩️ Rolled back like update for activity \(activity.id)")
+                }
+            }
+        }
     }
     
     private func refreshFeed() async {
+        // Reload both community challenges and public activities
         await community.refresh()
+        await feedService.loadPublicActivities()
         try? await Task.sleep(nanoseconds: 500_000_000)
     }
 }
@@ -2355,6 +2885,7 @@ struct ModernActivityCard: View {
     let activity: FeedActivity
     let onTapCard: (() -> Void)?
     @EnvironmentObject var store: ActivityStore
+    @EnvironmentObject var feedService: ActivityFeedService
     @State private var showCommentsSheet = false
     
     init(activity: FeedActivity, onTapCard: (() -> Void)? = nil) {
@@ -2507,8 +3038,8 @@ struct ModernActivityCard: View {
                                 .font(.system(size: 22))
                                 .foregroundColor(.white)
                             
-                            if !activity.comments.isEmpty {
-                                Text("\(activity.comments.count)")
+                            if activity.commentCount > 0 {
+                                Text("\(activity.commentCount)")
                                     .font(.system(size: 15, weight: .medium))
                                     .foregroundColor(.white)
                             }
@@ -2533,6 +3064,7 @@ struct ModernActivityCard: View {
         .sheet(isPresented: $showCommentsSheet) {
             CommentsBottomSheet(isPresented: $showCommentsSheet, activity: activity)
                 .environmentObject(store)
+                .environmentObject(feedService)
         }
     }
     
@@ -2654,6 +3186,7 @@ struct ActivityRow: View {
     let activity: FeedActivity
     let onTapActivity: (() -> Void)?
     @EnvironmentObject var store: ActivityStore
+    @EnvironmentObject var feedService: ActivityFeedService
     @State private var showCommentsBottomSheet: Bool = false
 
     private var paceString: String {
@@ -2857,7 +3390,7 @@ struct ActivityRow: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "bubble.right")
-                        Text("\(activity.comments.count)")
+                        Text("\(activity.commentCount)")
                     }
                 }
                 .buttonStyle(.plain)
@@ -2873,6 +3406,7 @@ struct ActivityRow: View {
         .sheet(isPresented: $showCommentsBottomSheet) {
             CommentsBottomSheet(isPresented: $showCommentsBottomSheet, activity: activity)
                 .environmentObject(store)
+                .environmentObject(feedService)
         }
     }
 }

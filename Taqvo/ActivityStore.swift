@@ -6,9 +6,16 @@
 //
 
 import Foundation
+import Combine
 import SwiftUI
 import MapKit
 import CoreLocation
+
+// Notification names
+extension Notification.Name {
+    static let activityDeleted = Notification.Name("activityDeleted")
+    static let activityUpdated = Notification.Name("activityUpdated")
+}
 
 enum PostVisibility: String, CaseIterable, Codable, Hashable {
     case publicFeed = "public"
@@ -81,6 +88,7 @@ struct FeedActivity: Identifiable, Codable, Hashable {
     var likeCount: Int
     var likedByUserIds: [String] // Array of user IDs who liked this activity
     var comments: [ActivityComment]
+    var commentCount: Int // Total comment count from database (may differ from comments.count if not all loaded)
     let kind: ActivityKind
     let caloriesKilocalories: Double
     let averageHeartRateBPM: Double?
@@ -95,7 +103,7 @@ struct FeedActivity: Identifiable, Codable, Hashable {
     let visibility: PostVisibility
 
     enum CodingKeys: String, CodingKey {
-        case id, userId, username, avatarUrl, distanceMeters, durationSeconds, route, startDate, endDate, snapshotPNG, note, photoPNG, title, likeCount, likedByUserIds, comments, kind, caloriesKilocalories, averageHeartRateBPM, splitsSeconds, challengeTitle, challengeIsPublic, stepsCount, elevationGainMeters, visibility
+        case id, userId, username, avatarUrl, distanceMeters, durationSeconds, route, startDate, endDate, snapshotPNG, note, photoPNG, title, likeCount, likedByUserIds, comments, commentCount, kind, caloriesKilocalories, averageHeartRateBPM, splitsSeconds, challengeTitle, challengeIsPublic, stepsCount, elevationGainMeters, visibility
     }
 
     init(id: UUID,
@@ -114,6 +122,7 @@ struct FeedActivity: Identifiable, Codable, Hashable {
          likeCount: Int = 0,
          likedByUserIds: [String] = [],
          comments: [ActivityComment] = [],
+         commentCount: Int = 0,
          kind: ActivityKind,
          caloriesKilocalories: Double,
          averageHeartRateBPM: Double? = nil,
@@ -139,6 +148,7 @@ struct FeedActivity: Identifiable, Codable, Hashable {
         self.likeCount = likeCount
         self.likedByUserIds = likedByUserIds
         self.comments = comments
+        self.commentCount = commentCount
         self.kind = kind
         self.caloriesKilocalories = caloriesKilocalories
         self.averageHeartRateBPM = averageHeartRateBPM
@@ -168,6 +178,7 @@ struct FeedActivity: Identifiable, Codable, Hashable {
         likeCount = try c.decodeIfPresent(Int.self, forKey: .likeCount) ?? 0
         likedByUserIds = try c.decodeIfPresent([String].self, forKey: .likedByUserIds) ?? []
         comments = try c.decodeIfPresent([ActivityComment].self, forKey: .comments) ?? []
+        commentCount = try c.decodeIfPresent(Int.self, forKey: .commentCount) ?? 0
         kind = try c.decodeIfPresent(ActivityKind.self, forKey: .kind) ?? .run
         caloriesKilocalories = try c.decodeIfPresent(Double.self, forKey: .caloriesKilocalories) ?? 0
         averageHeartRateBPM = try c.decodeIfPresent(Double.self, forKey: .averageHeartRateBPM)
@@ -368,7 +379,43 @@ final class ActivityStore: ObservableObject {
     @MainActor
     func updateActivity(_ updatedActivity: FeedActivity) {
         if let index = activities.firstIndex(where: { $0.id == updatedActivity.id }) {
-            activities[index] = updatedActivity
+            let existingActivity = activities[index]
+            var merged = updatedActivity
+            
+            // Intelligently merge to preserve data
+            // Preserve comments if updated version is missing them but existing has them
+            if merged.comments.isEmpty && !existingActivity.comments.isEmpty {
+                merged.comments = existingActivity.comments
+            }
+            
+            // Use max count for safety
+            merged.commentCount = max(merged.commentCount, existingActivity.commentCount)
+            
+            activities[index] = merged
+            save()
+            
+            print("✅ Updated activity \(updatedActivity.id) in ActivityStore")
+        } else {
+            // Activity not in local store, but might be a public activity we're viewing
+            // Don't add it to local store, just broadcast the update
+            print("⚠️ Activity \(updatedActivity.id) not in local store, broadcasting update anyway")
+        }
+        
+        // Always notify observers that activity was updated (for UI updates in public feed)
+        // This ensures FeedService and other observers receive the update
+        NotificationCenter.default.post(
+            name: .activityUpdated, 
+            object: nil, 
+            userInfo: ["activity": updatedActivity]
+        )
+    }
+    
+    @MainActor
+    func updateActivityComments(activityID: UUID, comments: [ActivityComment]) {
+        if let index = activities.firstIndex(where: { $0.id == activityID }) {
+            var activity = activities[index]
+            activity.comments = comments
+            activities[index] = activity
             save()
         }
     }
@@ -382,8 +429,27 @@ final class ActivityStore: ObservableObject {
             return
         }
         
+        // Delete from local store
         activities.removeAll { $0.id == activity.id }
         save()
+        
+        // Notify observers that activity was deleted (for UI updates)
+        NotificationCenter.default.post(name: .activityDeleted, object: nil, userInfo: ["activityID": activity.id])
+        
+        // Delete from Supabase in background
+        Task {
+            do {
+                guard let supabase = SupabaseCommunityDataSource.makeFromInfoPlist(authManager: SupabaseAuthManager.shared) else {
+                    print("⚠️ Supabase not configured, skipping remote delete")
+                    return
+                }
+                try await supabase.deleteActivity(activityID: activity.id)
+                print("✅ Activity deleted from Supabase")
+            } catch {
+                print("⚠️ Failed to delete activity from Supabase: \(error)")
+                // Activity is already deleted locally, so we don't need to revert
+            }
+        }
     }
 
     @MainActor
@@ -392,34 +458,64 @@ final class ActivityStore: ObservableObject {
         guard let currentUserId = SupabaseAuthManager.shared.userId else { return }
         
         var a = activities[idx]
+        let wasLiked = a.likedByUserIds.contains(currentUserId)
         
-        if a.likedByUserIds.contains(currentUserId) {
-            // User already liked it, so unlike
+        // Optimistic update
+        if wasLiked {
             a.likedByUserIds.removeAll { $0 == currentUserId }
             if a.likeCount > 0 { a.likeCount -= 1 }
         } else {
-            // User hasn't liked it yet, so like it
             a.likedByUserIds.append(currentUserId)
             a.likeCount += 1
         }
         
         activities[idx] = a
         save()
+        
+        // Notify UI
+        NotificationCenter.default.post(name: .activityUpdated, object: nil, userInfo: ["activity": a])
+        
+        // Sync to Supabase in background
+        Task {
+            do {
+                guard let supabase = SupabaseCommunityDataSource.makeFromInfoPlist(authManager: SupabaseAuthManager.shared) else {
+                    return
+                }
+                let isNowLiked = try await supabase.toggleLike(activityID: activityID)
+                print("✅ Like synced to Supabase: \(isNowLiked)")
+            } catch {
+                print("⚠️ Failed to sync like to Supabase: \(error)")
+                // Revert optimistic update on failure
+                await MainActor.run {
+                    guard let idx = activities.firstIndex(where: { $0.id == activityID }) else { return }
+                    var a = activities[idx]
+                    if wasLiked {
+                        a.likedByUserIds.append(currentUserId)
+                        a.likeCount += 1
+                    } else {
+                        a.likedByUserIds.removeAll { $0 == currentUserId }
+                        if a.likeCount > 0 { a.likeCount -= 1 }
+                    }
+                    activities[idx] = a
+                    save()
+                    NotificationCenter.default.post(name: .activityUpdated, object: nil, userInfo: ["activity": a])
+                }
+            }
+        }
     }
 
     @MainActor
     func addComment(activityID: UUID, text: String, author: String? = nil, authorUsername: String? = nil, authorProfileImageBase64: String? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        guard let idx = activities.firstIndex(where: { $0.id == activityID }) else { return }
-        var a = activities[idx]
         
-        // Get current user's email as the primary identifier
-        let currentUserEmail = SupabaseAuthManager.shared.userEmail ?? "You"
-        let commentAuthor = author ?? currentUserEmail
+        // Get current user's userId as the primary identifier (always available when authenticated)
+        let currentUserId = SupabaseAuthManager.shared.userId ?? "unknown"
+        let commentAuthor = author ?? (SupabaseAuthManager.shared.userEmail ?? currentUserId)
         
         // Get current user's profile info from ProfileService
         let profileService = ProfileService.shared
+        
         print("DEBUG: Current profile in addComment: \(String(describing: profileService.currentProfile))")
         print("DEBUG: Current profile username: \(String(describing: profileService.currentProfile?.username))")
         print("DEBUG: Current profile avatarUrl: \(String(describing: profileService.currentProfile?.avatarUrl))")
@@ -431,7 +527,11 @@ final class ActivityStore: ObservableObject {
         } else if let profileUsername = profileService.currentProfile?.username, !profileUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             finalUsername = profileUsername
         } else {
-            // Don't store email in authorUsername - let CommentRowView handle the fallback
+            // If profile not loaded, load it asynchronously and we'll use it next time
+            // For now, use nil and let the UI show email
+            Task {
+                await profileService.loadCurrentUserProfile()
+            }
             finalUsername = nil
         }
         
@@ -441,17 +541,72 @@ final class ActivityStore: ObservableObject {
         print("DEBUG: Final username for comment: \(String(describing: finalUsername))")
         print("DEBUG: Final profile image for comment: \(String(describing: finalProfileImage))")
         
+        let commentId = UUID()
         let comment = ActivityComment(
-            id: UUID(),
+            id: commentId,
             author: commentAuthor,
             text: trimmed,
             date: Date(),
             authorUsername: finalUsername,
             authorProfileImageBase64: finalProfileImage
         )
-        a.comments.append(comment)
-        activities[idx] = a
-        save()
+        
+        // Optimistic update - update local store if activity exists there
+        if let idx = activities.firstIndex(where: { $0.id == activityID }) {
+            var a = activities[idx]
+            a.comments.append(comment)
+            a.commentCount += 1 // Increment counter
+            activities[idx] = a
+            save()
+            
+            print("✅ Comment added to local activity \(activityID)")
+            
+            // Notify observers that activity was updated (for UI updates in public feed)
+            NotificationCenter.default.post(name: .activityUpdated, object: nil, userInfo: ["activity": a])
+        } else {
+            // Activity not in local store - might be a public activity
+            // Just broadcast the comment addition for FeedService to handle
+            print("⚠️ Activity \(activityID) not in local store, broadcasting comment update")
+            
+            // Create a temporary activity object with just the comment for notification
+            // FeedService will handle merging this properly
+            var tempActivity = FeedActivity(
+                id: activityID,
+                userId: currentUserId,
+                distanceMeters: 0,
+                durationSeconds: 0,
+                route: [],
+                startDate: Date(),
+                endDate: Date(),
+                snapshotPNG: nil,
+                note: nil,
+                photoPNG: nil,
+                comments: [comment],
+                commentCount: 1,
+                kind: .run,
+                caloriesKilocalories: 0
+            )
+            NotificationCenter.default.post(name: .activityUpdated, object: nil, userInfo: ["activity": tempActivity])
+        }
+        
+        // Sync to Supabase in background
+        Task {
+            do {
+                guard let supabase = SupabaseCommunityDataSource.makeFromInfoPlist(authManager: SupabaseAuthManager.shared) else {
+                    return
+                }
+                let _ = try await supabase.addComment(
+                    activityID: activityID,
+                    text: trimmed,
+                    username: finalUsername,
+                    avatarUrl: finalProfileImage
+                )
+                print("✅ Comment synced to Supabase")
+            } catch {
+                print("⚠️ Failed to sync comment to Supabase: \(error)")
+                // TODO: Consider rollback on failure
+            }
+        }
     }
     
     @MainActor
@@ -464,13 +619,36 @@ final class ActivityStore: ObservableObject {
         let comment = activity.comments[commentIdx]
         
         // Check if current user is the author of the comment
-        let currentUserEmail = SupabaseAuthManager.shared.userEmail ?? "You"
-        guard comment.author == currentUserEmail else { return }
+        let currentUserId = SupabaseAuthManager.shared.userId
+        let currentUserEmail = SupabaseAuthManager.shared.userEmail
+        
+        let isAuthor = (currentUserEmail != nil && comment.author == currentUserEmail) ||
+                       (currentUserId != nil && comment.author == currentUserId)
+        guard isAuthor else { return }
         
         // Remove the comment
         activity.comments.remove(at: commentIdx)
+        if activity.commentCount > 0 {
+            activity.commentCount -= 1 // Decrement counter
+        }
         activities[activityIdx] = activity
         save()
+        
+        // Notify observers that activity was updated (for UI updates in public feed)
+        NotificationCenter.default.post(name: .activityUpdated, object: nil, userInfo: ["activity": activity])
+        
+        // Sync to Supabase in background
+        Task {
+            do {
+                guard let supabase = SupabaseCommunityDataSource.makeFromInfoPlist(authManager: SupabaseAuthManager.shared) else {
+                    return
+                }
+                try await supabase.deleteComment(commentID: commentID)
+                print("✅ Comment deletion synced to Supabase")
+            } catch {
+                print("⚠️ Failed to sync comment deletion to Supabase: \(error)")
+            }
+        }
     }
 }
 

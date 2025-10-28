@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CommentsBottomSheet: View {
     @EnvironmentObject var store: ActivityStore
+    @EnvironmentObject var feedService: ActivityFeedService
     @Binding var isPresented: Bool
     let activity: FeedActivity
     @State private var commentText: String = ""
@@ -27,7 +28,13 @@ struct CommentsBottomSheet: View {
     }
     
     var comments: [ActivityComment] {
-        activity.comments.sorted { $0.date < $1.date }
+        // Get the latest activity from feedService (for public activities) or store (for user's own)
+        if let latestActivity = feedService.publicActivities.first(where: { $0.id == activity.id }) {
+            return latestActivity.comments.sorted { $0.date < $1.date }
+        } else if let latestActivity = store.activities.first(where: { $0.id == activity.id }) {
+            return latestActivity.comments.sorted { $0.date < $1.date }
+        }
+        return activity.comments.sorted { $0.date < $1.date }
     }
     
     var body: some View {
@@ -125,6 +132,49 @@ struct CommentsBottomSheet: View {
         .presentationDetents([.fraction(0.5), .large])
         .presentationDragIndicator(.visible)
         .presentationBackgroundInteraction(.disabled)
+        .onAppear {
+            // Ensure profile is loaded when comments sheet opens
+            // This ensures username is available for new comments
+            Task {
+                await ProfileService.shared.loadCurrentUserProfile()
+                
+                print("🔍 CommentsBottomSheet appeared for activity: \(activity.id)")
+                
+                // Load comments from Supabase
+                guard let supabase = SupabaseCommunityDataSource.makeFromInfoPlist(authManager: SupabaseAuthManager.shared) else {
+                    print("❌ Failed to create Supabase data source")
+                    return
+                }
+                
+                do {
+                    print("🔄 Loading comments from Supabase for activity: \(activity.id)")
+                    let comments = try await supabase.loadComments(activityID: activity.id)
+                    print("✅ Loaded \(comments.count) comments from Supabase")
+                    
+                    // Update activity with loaded comments in both store and feedService
+                    await MainActor.run {
+                        // Update in store (for user's own activities)
+                        store.updateActivityComments(activityID: activity.id, comments: comments)
+                        print("✅ Updated comments in store")
+                        
+                        // Update in feedService (for public activities)
+                        if let index = feedService.publicActivities.firstIndex(where: { $0.id == activity.id }) {
+                            var updatedActivity = feedService.publicActivities[index]
+                            updatedActivity.comments = comments
+                            feedService.publicActivities[index] = updatedActivity
+                            print("✅ Updated comments in feedService for activity \(activity.id)")
+                        } else {
+                            print("⚠️ Activity \(activity.id) not found in feedService.publicActivities")
+                        }
+                    }
+                } catch {
+                    print("❌ Failed to load comments from Supabase: \(error)")
+                    if let urlError = error as? URLError {
+                        print("   URLError code: \(urlError.code)")
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -134,11 +184,30 @@ struct CommentRowView: View {
     let store: ActivityStore
     
     private var displayName: String {
-        // Use username if available and not empty, otherwise fall back to email (author)
+        // Use username if available and not empty
         if let username = comment.authorUsername, !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return username
         }
-        return comment.author
+        
+        // If this is the current user's comment, use their profile username
+        if isCurrentUserComment {
+            // Try to get current user's username from profile
+            if let currentUsername = ProfileService.shared.currentProfile?.username, !currentUsername.isEmpty {
+                return currentUsername
+            }
+            // Fall back to email if available
+            if let email = SupabaseAuthManager.shared.userEmail {
+                return email
+            }
+        }
+        
+        // For other users' comments, show the author field (email) if it's not "You"
+        if comment.author != "You" {
+            return comment.author
+        }
+        
+        // If we get here, it's someone else's comment but author is "You" - show as "Anonymous"
+        return "Anonymous"
     }
     
     private var profileImageURL: URL? {
@@ -170,8 +239,17 @@ struct CommentRowView: View {
     }
     
     private var isCurrentUserComment: Bool {
-        let currentUserEmail = SupabaseAuthManager.shared.userEmail ?? "You"
-        return comment.author == currentUserEmail
+        let currentUserId = SupabaseAuthManager.shared.userId
+        let currentUserEmail = SupabaseAuthManager.shared.userEmail
+        
+        // Check if comment author matches current user's email or userId
+        if let email = currentUserEmail, comment.author == email {
+            return true
+        }
+        if let userId = currentUserId, comment.author == userId {
+            return true
+        }
+        return false
     }
     
     var body: some View {

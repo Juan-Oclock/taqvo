@@ -10,10 +10,15 @@ import SwiftUI
 struct CommentsView: View {
     let activityID: UUID
     @EnvironmentObject var store: ActivityStore
+    @EnvironmentObject var feedService: ActivityFeedService
     @State private var commentText: String = ""
 
     private var activity: FeedActivity? {
-        store.activities.first(where: { $0.id == activityID })
+        // Check feedService first (for public activities), then store (for user's own)
+        if let publicActivity = feedService.publicActivities.first(where: { $0.id == activityID }) {
+            return publicActivity
+        }
+        return store.activities.first(where: { $0.id == activityID })
     }
 
     private var comments: [ActivityComment] {
@@ -36,7 +41,7 @@ struct CommentsView: View {
                 ForEach(comments) { c in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Text(c.author)
+                            Text(c.authorUsername ?? c.author)
                                 .font(.subheadline)
                                 .foregroundColor(.taqvoTextDark)
                             Spacer()
@@ -59,6 +64,48 @@ struct CommentsView: View {
         .safeAreaInset(edge: .bottom) {
             composer
         }
+        .onAppear {
+            Task {
+                await ProfileService.shared.loadCurrentUserProfile()
+                
+                print("🔍 CommentsView appeared for activity: \(activityID)")
+                
+                // Load comments from Supabase
+                guard let supabase = SupabaseCommunityDataSource.makeFromInfoPlist(authManager: SupabaseAuthManager.shared) else {
+                    print("❌ Failed to create Supabase data source")
+                    return
+                }
+                
+                do {
+                    print("🔄 Loading comments from Supabase for activity: \(activityID)")
+                    let comments = try await supabase.loadComments(activityID: activityID)
+                    print("✅ Loaded \(comments.count) comments from Supabase")
+                    
+                    // Update activity with loaded comments in both store and feedService
+                    await MainActor.run {
+                        // Update in store (for user's own activities)
+                        store.updateActivityComments(activityID: activityID, comments: comments)
+                        print("✅ Updated comments in store")
+                        
+                        // Update in feedService (for public activities)
+                        if let index = feedService.publicActivities.firstIndex(where: { $0.id == activityID }) {
+                            var updatedActivity = feedService.publicActivities[index]
+                            updatedActivity.comments = comments
+                            updatedActivity.commentCount = comments.count // Update counter to match loaded comments
+                            feedService.publicActivities[index] = updatedActivity
+                            print("✅ Updated comments in feedService for activity \(activityID) - count: \(comments.count)")
+                        } else {
+                            print("⚠️ Activity \(activityID) not found in feedService.publicActivities")
+                        }
+                    }
+                } catch {
+                    print("❌ Failed to load comments from Supabase: \(error)")
+                    if let urlError = error as? URLError {
+                        print("   URLError code: \(urlError.code)")
+                    }
+                }
+            }
+        }
     }
     private var composer: some View {
         HStack(spacing: 8) {
@@ -68,7 +115,7 @@ struct CommentsView: View {
                 let trimmed = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { return }
                 commentText = ""
-                store.addComment(activityID: activityID, text: trimmed, author: "You")
+                store.addComment(activityID: activityID, text: trimmed)
             }
             .disabled(commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .buttonStyle(TaqvoCTAButtonStyle())

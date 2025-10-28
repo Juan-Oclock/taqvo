@@ -246,6 +246,11 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
         let distance_meters: Int
         let source: String
         let title: String?
+        let visibility: String?
+        let kind: String?
+        let duration_seconds: Double?
+        let calories: Double?
+        let note: String?
     }
     
     struct ActivityUploadResponse: Codable {
@@ -258,6 +263,11 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
         let distance_meters: Int?
         let source: String?
         let title: String?
+        let visibility: String?
+        let kind: String?
+        let duration_seconds: Double?
+        let calories: Double?
+        let note: String?
     }
     
     func uploadActivity(_ activity: FeedActivity) async throws {
@@ -274,7 +284,12 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
             ended_at: ISO8601DateFormatter().string(from: activity.endDate),
             distance_meters: Int(activity.distanceMeters),
             source: "device",
-            title: activity.title
+            title: activity.title,
+            visibility: activity.visibility.rawValue,
+            kind: activity.kind.rawValue,
+            duration_seconds: activity.durationSeconds,
+            calories: activity.caloriesKilocalories,
+            note: activity.note
         )
         
         do {
@@ -287,7 +302,12 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
                 "ended_at": upload.ended_at,
                 "distance_meters": upload.distance_meters,
                 "source": upload.source,
-                "title": upload.title as Any
+                "title": upload.title as Any,
+                "visibility": upload.visibility as Any,
+                "kind": upload.kind as Any,
+                "duration_seconds": upload.duration_seconds as Any,
+                "calories": upload.calories as Any,
+                "note": upload.note as Any
             ])
         } catch {
             // If offline or server error, we'll retry later
@@ -310,6 +330,244 @@ final class SupabaseCommunityDataSource: CommunityDataSource {
         } catch {
             // If offline or server error, return empty list
             return []
+        }
+    }
+    
+    func loadPublicActivities(limit: Int = 20) async throws -> [FeedActivity] {
+        do {
+            struct ActivityDTO: Decodable {
+                let id: String
+                let user_id: String
+                let username: String?
+                let avatar_url: String?
+                let started_at: String
+                let ended_at: String?
+                let distance_meters: Int
+                let source: String
+                let title: String?
+                let visibility: String?
+                let kind: String?
+                let duration_seconds: Double?
+                let calories: Double?
+                let note: String?
+                let like_count: Int?
+                let comment_count: Int?
+            }
+            
+            let activities: [ActivityDTO] = try await get(path: "/rest/v1/activities", queryItems: [
+                URLQueryItem(name: "select", value: "id,user_id,username,avatar_url,started_at,ended_at,distance_meters,source,title,visibility,kind,duration_seconds,calories,note,like_count,comment_count"),
+                URLQueryItem(name: "visibility", value: "eq.public"),
+                URLQueryItem(name: "order", value: "started_at.desc"),
+                URLQueryItem(name: "limit", value: "\(limit)")
+            ])
+            
+            // Convert ActivityUpload to FeedActivity
+            let feedActivities = activities.compactMap { dto -> FeedActivity? in
+                guard let startDate = ISO8601DateFormatter().date(from: dto.started_at) else {
+                    print("⚠️ Failed to parse start date: \(dto.started_at)")
+                    return nil
+                }
+                
+                let endDate = dto.ended_at.flatMap { ISO8601DateFormatter().date(from: $0) } ?? startDate
+                
+                // Parse activity kind
+                let kind: ActivityKind
+                if let kindString = dto.kind {
+                    kind = ActivityKind(rawValue: kindString) ?? .run
+                } else {
+                    kind = .run // Default
+                }
+                
+                return FeedActivity(
+                    id: UUID(uuidString: dto.id) ?? UUID(),
+                    userId: dto.user_id,
+                    username: dto.username,
+                    avatarUrl: dto.avatar_url,
+                    distanceMeters: Double(dto.distance_meters),
+                    durationSeconds: dto.duration_seconds ?? 0,
+                    route: [], // Route not stored in basic schema
+                    startDate: startDate,
+                    endDate: endDate,
+                    snapshotPNG: nil,
+                    note: dto.note,
+                    photoPNG: nil,
+                    title: dto.title,
+                    likeCount: dto.like_count ?? 0,
+                    likedByUserIds: [], // Will be populated separately if needed
+                    comments: [], // Will be loaded on-demand when viewing details
+                    commentCount: dto.comment_count ?? 0,
+                    kind: kind,
+                    caloriesKilocalories: dto.calories ?? 0,
+                    averageHeartRateBPM: nil,
+                    splitsSeconds: nil,
+                    challengeTitle: nil,
+                    challengeIsPublic: nil,
+                    stepsCount: nil,
+                    elevationGainMeters: nil,
+                    visibility: PostVisibility(rawValue: dto.visibility ?? "private") ?? .privateOnly
+                )
+            }
+            
+            // Load likes for current user to populate likedByUserIds
+            if let currentUserId = await authManager.userId {
+                let activityIds = feedActivities.map { $0.id.uuidString }
+                if !activityIds.isEmpty {
+                    struct UserLike: Decodable {
+                        let activity_id: String
+                    }
+                    // Get all activities the current user has liked
+                    let userLikes: [UserLike] = try await get(path: "/rest/v1/activity_likes", queryItems: [
+                        URLQueryItem(name: "user_id", value: "eq.\(currentUserId)"),
+                        URLQueryItem(name: "activity_id", value: "in.(\(activityIds.joined(separator: ",")))"),
+                        URLQueryItem(name: "select", value: "activity_id")
+                    ])
+                    
+                    let likedActivityIds = Set(userLikes.compactMap { UUID(uuidString: $0.activity_id) })
+                    
+                    // Update activities with current user's liked status
+                    var updatedActivities = feedActivities
+                    for i in 0..<updatedActivities.count {
+                        if likedActivityIds.contains(updatedActivities[i].id) {
+                            var activity = updatedActivities[i]
+                            activity.likedByUserIds = [currentUserId]
+                            updatedActivities[i] = activity
+                        }
+                    }
+                    
+                    print("✅ Loaded \(updatedActivities.count) public activities from Supabase (with like status)")
+                    return updatedActivities
+                }
+            }
+            
+            print("✅ Loaded \(feedActivities.count) public activities from Supabase")
+            return feedActivities
+        } catch {
+            print("❌ Error loading public activities: \(error)")
+            return []
+        }
+    }
+    
+    func deleteActivity(activityID: UUID) async throws {
+        guard let userId = await authManager.userId else {
+            throw NSError(domain: "Supabase", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sign in required to delete activity"])
+        }
+        
+        do {
+            // Delete from Supabase with user_id check for security
+            try await delete(path: "/rest/v1/activities", queryItems: [
+                URLQueryItem(name: "id", value: "eq.\(activityID.uuidString)"),
+                URLQueryItem(name: "user_id", value: "eq.\(userId)")
+            ])
+            print("✅ Deleted activity \(activityID.uuidString) from Supabase")
+        } catch {
+            print("❌ Error deleting activity from Supabase: \(error)")
+            throw error
+        }
+    }
+    
+    // MARK: - Likes
+    
+    func toggleLike(activityID: UUID) async throws -> Bool {
+        guard let userId = await authManager.userId else {
+            throw NSError(domain: "Supabase", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sign in required"])
+        }
+        
+        // Check if user already liked this activity
+        struct LikeCheck: Decodable {
+            let id: String
+        }
+        let existing: [LikeCheck] = try await get(path: "/rest/v1/activity_likes", queryItems: [
+            URLQueryItem(name: "activity_id", value: "eq.\(activityID.uuidString)"),
+            URLQueryItem(name: "user_id", value: "eq.\(userId)"),
+            URLQueryItem(name: "select", value: "id")
+        ])
+        
+        if existing.isEmpty {
+            // Insert like
+            let like = ["activity_id": activityID.uuidString, "user_id": userId]
+            struct EmptyResponse: Decodable {}
+            let _: EmptyResponse = try await post(path: "/rest/v1/activity_likes", jsonBody: like)
+            print("✅ Liked activity \(activityID.uuidString)")
+            return true // Now liked
+        } else {
+            // Delete like
+            try await delete(path: "/rest/v1/activity_likes", queryItems: [
+                URLQueryItem(name: "activity_id", value: "eq.\(activityID.uuidString)"),
+                URLQueryItem(name: "user_id", value: "eq.\(userId)")
+            ])
+            print("✅ Unliked activity \(activityID.uuidString)")
+            return false // Now unliked
+        }
+    }
+    
+    // MARK: - Comments
+    
+    func addComment(activityID: UUID, text: String, username: String?, avatarUrl: String?) async throws -> UUID {
+        guard let userId = await authManager.userId else {
+            throw NSError(domain: "Supabase", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sign in required"])
+        }
+        
+        let commentId = UUID()
+        let comment: [String: Any] = [
+            "id": commentId.uuidString,
+            "activity_id": activityID.uuidString,
+            "user_id": userId,
+            "username": username as Any,
+            "avatar_url": avatarUrl as Any,
+            "text": text
+        ]
+        
+        struct EmptyResponse: Decodable {}
+        let _: EmptyResponse = try await post(path: "/rest/v1/activity_comments", jsonBody: comment)
+        print("✅ Added comment to activity \(activityID.uuidString)")
+        return commentId
+    }
+    
+    func deleteComment(commentID: UUID) async throws {
+        guard let userId = await authManager.userId else {
+            throw NSError(domain: "Supabase", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sign in required"])
+        }
+        
+        try await delete(path: "/rest/v1/activity_comments", queryItems: [
+            URLQueryItem(name: "id", value: "eq.\(commentID.uuidString)"),
+            URLQueryItem(name: "user_id", value: "eq.\(userId)")
+        ])
+        print("✅ Deleted comment \(commentID.uuidString)")
+    }
+    
+    func loadComments(activityID: UUID) async throws -> [ActivityComment] {
+        struct CommentDTO: Decodable {
+            let id: String
+            let user_id: String
+            let username: String?
+            let avatar_url: String?
+            let text: String
+            let created_at: String
+        }
+        
+        let dtos: [CommentDTO] = try await get(path: "/rest/v1/activity_comments", queryItems: [
+            URLQueryItem(name: "activity_id", value: "eq.\(activityID.uuidString)"),
+            URLQueryItem(name: "select", value: "id,user_id,username,avatar_url,text,created_at"),
+            URLQueryItem(name: "order", value: "created_at.asc")
+        ])
+        
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        
+        return dtos.compactMap { dto in
+            guard let uuid = UUID(uuidString: dto.id),
+                  let date = formatter.date(from: dto.created_at) else {
+                return nil
+            }
+            
+            return ActivityComment(
+                id: uuid,
+                author: dto.user_id,
+                text: dto.text,
+                date: date,
+                authorUsername: dto.username,
+                authorProfileImageBase64: dto.avatar_url
+            )
         }
     }
 

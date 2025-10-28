@@ -154,7 +154,26 @@ final class ProfileService: ObservableObject {
         
         if httpResponse.statusCode == 404 || httpResponse.statusCode == 200 {
             let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
+            // Supabase returns dates in ISO8601 with fractional seconds
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            decoder.dateDecodingStrategy = .custom { decoder in
+                let container = try decoder.singleValueContainer()
+                let dateString = try container.decode(String.self)
+                
+                // Try ISO8601 with fractional seconds first
+                if let date = formatter.date(from: dateString) {
+                    return date
+                }
+                
+                // Fallback to standard ISO8601
+                formatter.formatOptions = [.withInternetDateTime]
+                if let date = formatter.date(from: dateString) {
+                    return date
+                }
+                
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Cannot decode date string \(dateString)")
+            }
             let profiles = try decoder.decode([UserProfile].self, from: data)
             
             if let profile = profiles.first {

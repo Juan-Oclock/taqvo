@@ -17,6 +17,9 @@ protocol CommunityDataSource {
 
     // Invites
     func inviteToChallenge(challengeID: UUID, usernames: [String]) async throws
+    
+    // Activities
+    func deleteActivity(activityID: UUID) async throws
 }
 
 final class MockCommunityDataSource: CommunityDataSource {
@@ -78,4 +81,7 @@ final class MockCommunityDataSource: CommunityDataSource {
 
     // Invites
     func inviteToChallenge(challengeID: UUID, usernames: [String]) async throws { _ = (challengeID, usernames) }
+    
+    // Activities
+    func deleteActivity(activityID: UUID) async throws { _ = activityID }
 }

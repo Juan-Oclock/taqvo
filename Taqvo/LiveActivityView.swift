@@ -33,25 +33,57 @@ struct LiveActivityView: View {
     @State private var showMiniPlayer: Bool = false
 
     var body: some View {
-        ZStack {
-            Color.taqvoBackgroundDark.ignoresSafeArea()
+        ZStack(alignment: .top) {
+            // Background
+            Color.black
+                .ignoresSafeArea()
             
+            // Map
+            MapRouteView(route: vm.routeCoordinates, markers: vm.markers)
+                .ignoresSafeArea()
+            
+            // Content overlay
             VStack(spacing: 0) {
-                modernHeaderSection
-                
-                ScrollView {
-                    VStack(spacing: 20) {
-                        modernMapSection
-                        modernMetricsSection
-                        goalProgressSection
-                        expandableMetricsSection
-                    }
-                    .padding(.bottom, 120)
-                }
+                // Header (no background - map shows through)
+                newHeaderSection
                 
                 Spacer()
                 
-                modernControlsSection
+                // Bottom section with gradient
+                VStack(spacing: 0) {
+                    bottomStatsSection
+                    
+                    Button {
+                        withAnimation(.spring(response: 0.3)) {
+                            showMetricsPanel.toggle()
+                        }
+                    } label: {
+                        Image(systemName: showMetricsPanel ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(Color(hex: "#BDF266"))
+                            .padding(.top, 8)
+                            .padding(.bottom, showMetricsPanel ? 16 : 32)
+                    }
+                    
+                    if showMetricsPanel {
+                        expandableMetricsContent
+                            .padding(.bottom, 24)
+                    }
+                    
+                    actionButtonsSection
+                        .padding(.top, showMetricsPanel ? 0 : 24)
+                }
+                .background(
+                    LinearGradient(
+                        colors: [
+                            Color.black.opacity(0.4),
+                            Color.black.opacity(0.9),
+                            Color.black
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
             }
         }
         .navigationBarHidden(true)
@@ -73,6 +105,7 @@ struct LiveActivityView: View {
             MiniMusicPlayerView(musicVM: musicVM, spotifyVM: spotifyVM)
                 .presentationDetents([.height(350)])
                 .presentationDragIndicator(.visible)
+                .presentationBackground(Color(hex: "#1D1F25"))
         }
         .onChange(of: markerPhotoItem) { _, item in
             guard let item = item else { return }
@@ -116,60 +149,219 @@ struct LiveActivityView: View {
         }
     }
     
-    // MARK: - Modern View Components
+    // MARK: - New Figma Design Components
     
-    private var modernHeaderSection: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Button {
-                    dismiss()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text("Back")
-                            .font(.system(size: 17))
-                    }
-                    .foregroundColor(.taqvoCTA)
+    private var newHeaderSection: some View {
+        HStack(alignment: .center) {
+            // Back button
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(.black)
+                    .frame(width: 48, height: 48)
+                    .background(Color.taqvoCTA)
+                    .clipShape(Circle())
+            }
+            
+            Spacer()
+            
+            // Duration Display
+            Text(timeString(vm.durationSeconds))
+                .font(.system(size: 64, weight: .bold))
+                .foregroundColor(Color(hex: "#BDF266"))
+                .tracking(-1.28)
+                .monospacedDigit()
+                .overlay(alignment: .bottom) {
+                    Text("Duration")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.white.opacity(0.6))
+                        .offset(y: 20)
                 }
+            
+            Spacer()
+            
+            // Menu/Music button
+            Button {
+                showMiniPlayer = true
+            } label: {
+                Image(systemName: "music.note")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(.black)
+                    .frame(width: 48, height: 48)
+                    .background(Color.taqvoCTA)
+                    .clipShape(Circle())
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 8)
+    }
+    
+    private var centeredDurationSection: some View {
+        VStack(spacing: 8) {
+            Text(timeString(vm.durationSeconds))
+                .font(.system(size: 96, weight: .bold))
+                .foregroundColor(Color(hex: "#BDF266"))
+                .tracking(-1.92)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            
+            Text("Duration")
+                .font(.system(size: 24, weight: .medium))
+                .foregroundColor(.white)
+                .tracking(-0.48)
+        }
+        .frame(maxWidth: 192)
+    }
+    
+    private var bottomStatsSection: some View {
+        HStack(spacing: 12) {
+            // Distance
+            statCard(
+                value: String(format: "%.2f", vm.distanceMeters / 1000.0),
+                label: "km"
+            )
+            
+            // Calories
+            statCard(
+                value: String(format: "%.0f", estimatedCalories()),
+                label: "kcal"
+            )
+            
+            // Steps
+            statCard(
+                value: String(vm.totalSteps),
+                label: "Steps"
+            )
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 24)
+        .padding(.bottom, 8)
+    }
+    
+    private func statCard(value: String, label: String) -> some View {
+        VStack(spacing: 8) {
+            Text(value)
+                .font(.system(size: 28, weight: .bold))
+                .foregroundColor(.white)
+                .tracking(-0.84)
+                .monospacedDigit()
+            
+            Text(label)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundColor(.gray)
+                .tracking(-0.6)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(Color.white.opacity(0.05))
+        .cornerRadius(12)
+    }
+    
+    private var expandableMetricsContent: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                metricCard(
+                    icon: "speedometer",
+                    value: ActivityTrackingViewModel.formattedPace(distanceMeters: vm.distanceMeters, durationSeconds: vm.durationSeconds),
+                    label: "Pace"
+                )
                 
-                Spacer()
+                metricCard(
+                    icon: "figure.walk",
+                    value: vm.currentCadenceSPM.map { String(format: "%.0f", $0) } ?? "—",
+                    label: "Cadence"
+                )
                 
-                VStack(spacing: 2) {
-                    Text("Live Activity")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.taqvoTextDark)
-                    
-                    // Challenge indicator
-                    if let challenge = appState.linkedChallengeTitle, !challenge.isEmpty {
-                        HStack(spacing: 4) {
-                            Image(systemName: "flag.2.crossed.fill")
-                                .font(.system(size: 10))
-                            Text(challenge)
-                                .font(.system(size: 11, weight: .medium))
-                        }
-                        .foregroundColor(.taqvoCTA)
-                        .lineLimit(1)
-                    }
-                }
-                
-                Spacer()
-                
-                // Music button
+                metricCard(
+                    icon: "mountain.2.fill",
+                    value: String(format: "%.0f", max(0, vm.elevationGainMeters)),
+                    label: "Elevation"
+                )
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+    
+    private func metricCard(icon: String, value: String, label: String) -> some View {
+        VStack(spacing: 8) {
+            Text(value)
+                .font(.system(size: 28, weight: .bold))
+                .foregroundColor(.white)
+                .tracking(-0.84)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            
+            Text(label)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundColor(.gray)
+                .tracking(-0.6)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.05))
+        .cornerRadius(12)
+    }
+    
+    private var actionButtonsSection: some View {
+        HStack(spacing: 16) {
+            // Pause/Resume button
+            if vm.isRunning {
                 Button {
-                    showMiniPlayer = true
+                    vm.pause()
                 } label: {
-                    Image(systemName: "music.note")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(musicVM.isPlaying || spotifyVM.isPlaying ? .taqvoCTA : .taqvoAccentText)
-                        .frame(width: 40, height: 40)
-                        .background(Color.black.opacity(0.2))
-                        .clipShape(Circle())
+                    Text("PAUSE")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.black)
+                        .tracking(-0.28)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 45)
+                        .background(.white)
+                        .cornerRadius(30)
+                }
+            } else if vm.hasSession {
+                Button {
+                    vm.resume()
+                } label: {
+                    Text("RESUME")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.black)
+                        .tracking(-0.28)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 45)
+                        .background(.white)
+                        .cornerRadius(30)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+            
+            // Stop button
+            Button {
+                summary = vm.summary()
+                vm.stop()
+                if autoStopMusicOnEnd {
+                    if provider == .spotify {
+                        Task { await spotifyVM.stopPlayback() }
+                    } else {
+                        musicVM.stopPlayback()
+                    }
+                }
+                showSummary = true
+            } label: {
+                Text("STOP")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.black)
+                    .tracking(-0.28)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 45)
+                    .background(Color(hex: "#BDF266"))
+                    .cornerRadius(30)
+            }
+            .disabled(!vm.hasSession)
         }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 24)
     }
     
     @ViewBuilder
@@ -560,82 +752,6 @@ struct LiveActivityView: View {
         }
     }
 
-    private var expandableMetricsSection: some View {
-        VStack(spacing: 12) {
-            Button(action: {
-                withAnimation(.spring(response: 0.3)) {
-                    showMetricsPanel.toggle()
-                }
-            }) {
-                HStack {
-                    Text("More Metrics")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.taqvoTextDark)
-                    Spacer()
-                    Image(systemName: showMetricsPanel ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.taqvoCTA)
-                }
-                .padding(16)
-                .background(Color.black.opacity(0.2))
-                .cornerRadius(12)
-            }
-            
-            if showMetricsPanel {
-                VStack(spacing: 12) {
-                    // Row 1: Cadence, Steps, Calories
-                    HStack(spacing: 12) {
-                        metricCard(
-                            icon: "figure.walk",
-                            value: vm.currentCadenceSPM.map { String(format: "%.0f", $0) } ?? "—",
-                            unit: "spm",
-                            label: "Cadence"
-                        )
-                        
-                        metricCard(
-                            icon: "shoeprints.fill",
-                            value: String(vm.totalSteps),
-                            unit: nil,
-                            label: "Steps"
-                        )
-                        
-                        metricCard(
-                            icon: "flame.fill",
-                            value: String(format: "%.0f", estimatedCalories()),
-                            unit: "kcal",
-                            label: "Calories"
-                        )
-                    }
-                    
-                    // Row 2: Elevation Gain, Elevation Loss, Speed
-                    HStack(spacing: 12) {
-                        metricCard(
-                            icon: "mountain.2.fill",
-                            value: String(format: "%.0f", max(0, vm.elevationGainMeters)),
-                            unit: "m",
-                            label: "Ascent"
-                        )
-                        
-                        metricCard(
-                            icon: "arrow.down.right",
-                            value: String(format: "%.0f", max(0, vm.elevationLossMeters)),
-                            unit: "m",
-                            label: "Descent"
-                        )
-                        
-                        metricCard(
-                            icon: "gauge.with.dots.needle.67percent",
-                            value: currentSpeed(),
-                            unit: "km/h",
-                            label: "Speed"
-                        )
-                    }
-                }
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .padding(.horizontal, 16)
-    }
     
     private var addMarkerSheet: some View {
         NavigationView {
@@ -741,40 +857,6 @@ struct LiveActivityView: View {
         return String(format: "%02d:%02d", m, sec)
     }
     
-    // MARK: - Metric Card Helper
-    
-    @ViewBuilder
-    private func metricCard(icon: String, value: String, unit: String?, label: String) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 18))
-                .foregroundColor(.taqvoCTA)
-            
-            Text(value)
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(.taqvoTextDark)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            
-            if let unit = unit {
-                Text(unit)
-                    .font(.system(size: 11))
-                    .foregroundColor(.taqvoAccentText)
-            } else {
-                Text("")
-                    .font(.system(size: 11))
-            }
-            
-            Text(label)
-                .font(.system(size: 11))
-                .foregroundColor(.taqvoAccentText)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .background(Color.black.opacity(0.2))
-        .cornerRadius(12)
-    }
     
     // MARK: - Metric Calculations
     
@@ -792,11 +874,6 @@ struct LiveActivityView: View {
         return max(kcal, 0)
     }
     
-    private func currentSpeed() -> String {
-        guard vm.distanceMeters > 0, vm.durationSeconds > 0 else { return "—" }
-        let speedKmh = (vm.distanceMeters / 1000.0) / (vm.durationSeconds / 3600.0)
-        return String(format: "%.1f", speedKmh)
-    }
 }
 
 // MARK: - View Extensions
