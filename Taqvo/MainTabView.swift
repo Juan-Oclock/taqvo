@@ -186,6 +186,7 @@ struct ActivityView: View {
     @State private var showMiniPlayer: Bool = false
     @State private var showMusicSheet: Bool = false
     @State private var provider: MusicProvider = .spotify
+    @State private var spotifyLoadingFailed: Bool = false
 
     enum ActivityType: String, CaseIterable { 
         case walk
@@ -851,48 +852,105 @@ struct ActivityView: View {
     @ViewBuilder
     private var spotifyContent: some View {
         if spotifyVM.isAuthorized {
-            ScrollView {
-                VStack(spacing: 12) {
-                    ForEach(spotifyVM.playlists, id: \.id) { playlist in
+            if spotifyVM.playlists.isEmpty {
+                // Loading or empty state
+                VStack(spacing: 20) {
+                    if !spotifyLoadingFailed {
+                        ProgressView()
+                            .tint(.taqvoCTA)
+                        Text("Loading playlists...")
+                            .font(.system(size: 14))
+                            .foregroundColor(.taqvoAccentText)
+                    } else {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(.taqvoAccentText)
+                        
+                        Text("Unable to Load Playlists")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(.taqvoTextDark)
+                        
+                        Text("Please reconnect your Spotify account")
+                            .font(.system(size: 14))
+                            .foregroundColor(.taqvoAccentText)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                        
                         Button {
+                            // Clear potentially revoked tokens and start fresh auth
                             Task {
-                                await spotifyVM.playPlaylist(playlist)
-                                showMusicSheet = false
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    showMiniPlayer = true
-                                }
+                                await SpotifyAuthManager.shared.clearTokens()
+                                SpotifyAuthManager.shared.startAuthorization()
                             }
                         } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(playlist.name)
-                                        .font(.system(size: 16, weight: .medium))
-                                        .foregroundColor(.taqvoTextDark)
-                                    Text("\(playlist.tracksCount) songs")
-                                        .font(.system(size: 13))
-                                        .foregroundColor(.taqvoAccentText)
-                                }
-                                Spacer()
-                                if spotifyVM.currentPlaylistName == playlist.name {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(.taqvoCTA)
-                                }
-                            }
-                            .padding(16)
-                            .background(Color.white.opacity(0.08))
-                            .cornerRadius(12)
+                            Text("Connect Spotify")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.black)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color.taqvoCTA)
+                                .cornerRadius(12)
+                        }
+                        .padding(.horizontal, 32)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onAppear {
+                    spotifyLoadingFailed = false
+                    print("DEBUG: Spotify authorized, loading playlists...")
+                    Task {
+                        await spotifyVM.loadPlaylists()
+                        print("DEBUG: Loaded \(spotifyVM.playlists.count) playlists")
+                        
+                        // If still empty after 2 seconds, show connect button
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        if spotifyVM.playlists.isEmpty {
+                            spotifyLoadingFailed = true
                         }
                     }
                 }
-                .padding(.horizontal, 16)
-            }
-            .onAppear {
-                Task {
-                    await spotifyVM.loadPlaylists()
+            } else {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ForEach(spotifyVM.playlists, id: \.id) { playlist in
+                            Button {
+                                Task {
+                                    await spotifyVM.playPlaylist(playlist)
+                                    showMusicSheet = false
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                        showMiniPlayer = true
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(playlist.name)
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(.taqvoTextDark)
+                                        Text("\(playlist.tracksCount) songs")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(.taqvoAccentText)
+                                    }
+                                    Spacer()
+                                    if spotifyVM.currentPlaylistName == playlist.name {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(.taqvoCTA)
+                                    }
+                                }
+                                .padding(16)
+                                .background(Color.white.opacity(0.08))
+                                .cornerRadius(12)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
                 }
             }
         } else {
             spotifyUnauthorizedView
+                .onAppear {
+                    print("DEBUG: Spotify NOT authorized")
+                }
         }
     }
     
@@ -931,8 +989,11 @@ struct ActivityView: View {
                 .padding(.horizontal, 32)
             
             Button {
-                SpotifyAuthManager.shared.startAuthorization()
-                showMusicSheet = false
+                // Clear potentially revoked tokens and start fresh auth
+                Task {
+                    await SpotifyAuthManager.shared.clearTokens()
+                    SpotifyAuthManager.shared.startAuthorization()
+                }
             } label: {
                 Text("Connect Spotify")
                     .font(.system(size: 16, weight: .semibold))
@@ -951,7 +1012,7 @@ struct ActivityView: View {
     private var goalEditSheet: some View {
         NavigationStack {
             ZStack {
-                Color(red: 79/255, green: 79/255, blue: 79/255)
+                Color.taqvoBackgroundDark
                     .ignoresSafeArea()
                 
                 ScrollView {
@@ -994,7 +1055,7 @@ struct ActivityView: View {
                                                 .font(.system(size: 16, weight: .semibold))
                                                 .foregroundColor(frequencyPerWeek == day ? .black : .white)
                                                 .frame(width: 40, height: 40)
-                                                .background(frequencyPerWeek == day ? Color.taqvoCTA : Color.white.opacity(0.1))
+                                                .background(frequencyPerWeek == day ? Color(hex: "BDF266") : Color.white.opacity(0.1))
                                                 .cornerRadius(20)
                                         }
                                     }
@@ -1003,9 +1064,18 @@ struct ActivityView: View {
                             .padding(16)
                             .background(Color.black.opacity(0.2))
                             .cornerRadius(16)
+                            
+                            // Goal Summary
+                            Text(goalSummaryText)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(Color(hex: "BDF266"))
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 8)
                         }
                     }
                     .padding(20)
+                    .frame(maxHeight: .infinity, alignment: .center)
                 }
             }
             .navigationTitle("Edit Goal")
@@ -1016,7 +1086,7 @@ struct ActivityView: View {
                         saveGoalChanges()
                         showGoalEditSheet = false
                     }
-                    .foregroundColor(.taqvoCTA)
+                    .foregroundColor(Color(hex: "BDF266"))
                 }
                 
                 ToolbarItem(placement: .topBarLeading) {
@@ -1038,9 +1108,9 @@ struct ActivityView: View {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 20))
-                    .foregroundColor(goal == type ? .taqvoCTA : .white.opacity(0.6))
+                    .foregroundColor(goal == type ? Color(hex: "BDF266") : .white.opacity(0.6))
                     .frame(width: 36, height: 36)
-                    .background(goal == type ? Color.taqvoCTA.opacity(0.15) : Color.white.opacity(0.05))
+                    .background(goal == type ? Color(hex: "BDF266").opacity(0.15) : Color.white.opacity(0.05))
                     .cornerRadius(18)
                 
                 Text(title)
@@ -1052,11 +1122,11 @@ struct ActivityView: View {
                 if goal == type {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 20))
-                        .foregroundColor(.taqvoCTA)
+                        .foregroundColor(Color(hex: "BDF266"))
                 }
             }
             .padding(16)
-            .background(goal == type ? Color.taqvoCTA.opacity(0.1) : Color.black.opacity(0.2))
+            .background(goal == type ? Color(hex: "BDF266").opacity(0.1) : Color.black.opacity(0.2))
             .cornerRadius(12)
         }
     }
@@ -1129,6 +1199,19 @@ struct ActivityView: View {
         .padding(16)
         .background(Color.black.opacity(0.2))
         .cornerRadius(16)
+    }
+    
+    private var goalSummaryText: String {
+        let times = frequencyPerWeek == 1 ? "once" : "\(frequencyPerWeek) times"
+        let activity = activityType.rawValue.lowercased()
+        
+        if goal == .distance {
+            return "You chose to \(activity) \(times) a week at \(String(format: "%.1f", distanceKilometers)) km each"
+        } else if goal == .time {
+            return "You chose to \(activity) \(times) a week at \(timeMinutes) min each"
+        } else {
+            return ""
+        }
     }
     
     private func saveGoalChanges() {
@@ -1214,11 +1297,16 @@ struct ActivityView: View {
         ZStack {
             Color.taqvoBackgroundDark.ignoresSafeArea()
             
-            VStack(spacing: 40) {
-                Text("Get Ready!")
+            VStack {
+                // Activity type at top
+                Text(activityType.rawValue.capitalized)
                     .font(.system(size: 24, weight: .semibold))
-                    .foregroundColor(.taqvoTextDark)
+                    .foregroundColor(.taqvoAccentText)
+                    .padding(.top, 60)
                 
+                Spacer()
+                
+                // Centered circle with countdown
                 VStack(spacing: 20) {
                     ZStack {
                         Circle()
@@ -1226,41 +1314,35 @@ struct ActivityView: View {
                             .frame(width: 200, height: 200)
                         
                         Circle()
-                            .trim(from: 0, to: CGFloat(6 - countdownValue) / 5)
-                            .stroke(Color.taqvoCTA, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                            .trim(from: 0, to: CGFloat(4 - countdownValue) / 3)
+                            .stroke(Color(hex: "BDF266"), style: StrokeStyle(lineWidth: 8, lineCap: .round))
                             .frame(width: 200, height: 200)
                             .rotationEffect(.degrees(-90))
                             .animation(.linear(duration: 1), value: countdownValue)
                         
                         Text("\(countdownValue)")
                             .font(.system(size: 80, weight: .bold))
-                            .foregroundColor(.taqvoCTA)
+                            .foregroundColor(Color(hex: "BDF266"))
                     }
                     
-                    // "Get", "Set", "Taqvo" labels
-                    if countdownValue <= 3 {
-                        Text(countdownLabel)
-                            .font(.system(size: 32, weight: .bold))
-                            .foregroundColor(.taqvoCTA)
-                            .transition(.scale.combined(with: .opacity))
-                    }
+                    // "Get", "Set", "Taqvo" labels - always visible
+                    Text(countdownLabel)
+                        .font(.system(size: 32, weight: .bold))
+                        .foregroundColor(Color(hex: "BDF266"))
+                        .transition(.scale.combined(with: .opacity))
                 }
                 
-                Text(activityType.rawValue.capitalized)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(.taqvoAccentText)
+                Spacer()
                 
+                // Skip button without background
                 Button {
-                    cancelCountdown()
+                    skipCountdown()
                 } label: {
-                    Text("Cancel")
+                    Text("Skip")
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.red)
-                        .padding(.horizontal, 32)
-                        .padding(.vertical, 12)
-                        .background(Color.red.opacity(0.1))
-                        .cornerRadius(20)
+                        .foregroundColor(.taqvoAccentText)
                 }
+                .padding(.bottom, 40)
             }
         }
         .onAppear {
@@ -1303,20 +1385,23 @@ struct ActivityView: View {
         
         withAnimation {
             showCountdown = true
-            countdownValue = 5
+            countdownValue = 3
         }
     }
     
     private func startCountdown() {
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
-            if countdownValue > 1 {
-                withAnimation {
-                    countdownValue -= 1
+        // Wait 1 second before starting countdown so "3" with "Get" is visible
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
+                if countdownValue > 0 {
+                    withAnimation {
+                        countdownValue -= 1
+                    }
+                } else {
+                    timer.invalidate()
+                    showCountdown = false
+                    navigateToLive = true
                 }
-            } else {
-                timer.invalidate()
-                showCountdown = false
-                navigateToLive = true
             }
         }
     }
@@ -1324,8 +1409,14 @@ struct ActivityView: View {
     private func cancelCountdown() {
         withAnimation {
             showCountdown = false
-            countdownValue = 5
+            countdownValue = 3
         }
+    }
+    
+    private func skipCountdown() {
+        showCountdown = false
+        navigateToLive = true
+        countdownValue = 3
     }
 
     var body: some View {

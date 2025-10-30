@@ -31,6 +31,9 @@ struct LiveActivityView: View {
     @State private var markerPhotoItem: PhotosPickerItem? = nil
     @State private var markerPhoto: UIImage? = nil
     @State private var showMiniPlayer: Bool = false
+    @State private var mapType: MKMapType = .standard
+    @State private var enable3D: Bool = false
+    @State private var recenterMap: Bool = false
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -38,9 +41,69 @@ struct LiveActivityView: View {
             Color.black
                 .ignoresSafeArea()
             
-            // Map
-            MapRouteView(route: vm.routeCoordinates, markers: vm.markers)
+            // Map with controls
+            ZStack(alignment: .bottomTrailing) {
+                EnhancedMapRouteView(
+                    route: vm.routeCoordinates,
+                    markers: vm.markers,
+                    mapType: $mapType,
+                    enable3D: $enable3D,
+                    recenterTrigger: $recenterMap
+                )
                 .ignoresSafeArea()
+                
+                // Map Controls - positioned above bottom container
+                VStack(spacing: 12) {
+                    // Map Style Button
+                    Button {
+                        withAnimation {
+                            switch mapType {
+                            case .standard:
+                                mapType = .hybrid
+                            case .hybrid:
+                                mapType = .satellite
+                            default:
+                                mapType = .standard
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "map")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Color.black.opacity(0.7))
+                            .cornerRadius(22)
+                    }
+                    
+                    // 3D Toggle Button
+                    Button {
+                        withAnimation {
+                            enable3D.toggle()
+                        }
+                    } label: {
+                        Text("3D")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(enable3D ? Color(hex: "BDF266") : .white)
+                            .frame(width: 44, height: 44)
+                            .background(Color.black.opacity(0.7))
+                            .cornerRadius(22)
+                    }
+                    
+                    // Recenter Button
+                    Button {
+                        recenterMap.toggle()
+                    } label: {
+                        Image(systemName: "location.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Color.black.opacity(0.7))
+                            .cornerRadius(22)
+                    }
+                }
+                .padding(.trailing, 16)
+                .padding(.bottom, 340)
+            }
             
             // Content overlay
             VStack(spacing: 0) {

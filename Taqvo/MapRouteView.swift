@@ -90,3 +90,122 @@ struct MapRouteView: UIViewRepresentable {
                                                    longitudeDelta: region.span.longitudeDelta * paddingScale))
     }
 }
+
+// Enhanced version with map controls
+struct EnhancedMapRouteView: UIViewRepresentable {
+    var route: [CLLocationCoordinate2D]
+    var markers: [ActivityMarker] = []
+    @Binding var mapType: MKMapType
+    @Binding var enable3D: Bool
+    @Binding var recenterTrigger: Bool
+    
+    class Coordinator: NSObject, MKMapViewDelegate {
+        var parent: EnhancedMapRouteView
+        
+        init(_ parent: EnhancedMapRouteView) {
+            self.parent = parent
+        }
+        
+        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let polyline = overlay as? MKPolyline {
+                let r = MKPolylineRenderer(polyline: polyline)
+                r.strokeColor = UIColor(red: 189/255, green: 242/255, blue: 102/255, alpha: 1.0)
+                r.lineWidth = 5
+                return r
+            }
+            return MKOverlayRenderer(overlay: overlay)
+        }
+        
+        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            if annotation is MKUserLocation { return nil }
+            let id = "taqvo.marker"
+            let view = mapView.dequeueReusableAnnotationView(withIdentifier: id) as? MKMarkerAnnotationView ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: id)
+            view.markerTintColor = .systemBlue
+            view.glyphImage = UIImage(systemName: "mappin")
+            view.canShowCallout = true
+            return view
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    func makeUIView(context: Context) -> MKMapView {
+        let map = MKMapView()
+        map.delegate = context.coordinator
+        map.showsUserLocation = true
+        map.isPitchEnabled = true
+        map.isRotateEnabled = false
+        map.showsCompass = false
+        map.showsScale = true
+        
+        // Respect app theme selection
+        let theme = UserDefaults.standard.string(forKey: "appTheme") ?? "system"
+        let style: UIUserInterfaceStyle
+        switch theme {
+        case "dark": style = .dark
+        case "light": style = .light
+        default: style = .unspecified
+        }
+        map.overrideUserInterfaceStyle = style
+        return map
+    }
+    
+    func updateUIView(_ map: MKMapView, context: Context) {
+        // Avoid CAMetalLayer warnings when the view hasn't been sized yet.
+        guard map.bounds.width > 0 && map.bounds.height > 0 else { return }
+        
+        // Update map type
+        map.mapType = mapType
+        
+        // Update 3D pitch
+        let camera = map.camera
+        camera.pitch = enable3D ? 45 : 0
+        map.setCamera(camera, animated: true)
+        
+        // Overlays
+        map.removeOverlays(map.overlays)
+        if route.count > 1 {
+            let polyline = MKPolyline(coordinates: route, count: route.count)
+            map.addOverlay(polyline)
+            
+            // Better zoom for live tracking - show more context
+            let region = MKCoordinateRegion(polyline.boundingMapRect)
+            let zoomedRegion = regionThatFits(region: region, paddingScale: 1.5)
+            map.setRegion(zoomedRegion, animated: true)
+        } else if let last = route.last {
+            // Closer zoom for single point
+            let region = MKCoordinateRegion(center: last, latitudinalMeters: 500, longitudinalMeters: 500)
+            map.setRegion(region, animated: true)
+        }
+        
+        // Recenter to user location when triggered
+        if recenterTrigger, let userLocation = map.userLocation.location {
+            let region = MKCoordinateRegion(
+                center: userLocation.coordinate,
+                latitudinalMeters: 500,
+                longitudinalMeters: 500
+            )
+            map.setRegion(region, animated: true)
+        }
+        
+        // Annotations (markers)
+        let toRemove = map.annotations.filter { !($0 is MKUserLocation) }
+        map.removeAnnotations(toRemove)
+        let annotations: [MKPointAnnotation] = markers.map { m in
+            let ann = MKPointAnnotation()
+            ann.coordinate = m.coordinate
+            ann.title = m.note ?? "Marker"
+            if m.note == nil { ann.subtitle = m.timestamp.formatted(date: .omitted, time: .shortened) }
+            return ann
+        }
+        map.addAnnotations(annotations)
+    }
+    
+    private func regionThatFits(region: MKCoordinateRegion, paddingScale: Double) -> MKCoordinateRegion {
+        MKCoordinateRegion(center: region.center,
+                           span: MKCoordinateSpan(latitudeDelta: region.span.latitudeDelta * paddingScale,
+                                                   longitudeDelta: region.span.longitudeDelta * paddingScale))
+    }
+}

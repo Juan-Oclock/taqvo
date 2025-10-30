@@ -81,120 +81,148 @@ struct ActivityDetailView: View {
         guard let currentUserId = SupabaseAuthManager.shared.userId else { return false }
         return activity.userId == currentUserId
     }
+    
+    @ViewBuilder
+    private func metricCard(icon: String, label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundColor(Color(hex: "BDF266"))
+                Text(label)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.taqvoAccentText)
+            }
+            Text(value)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.taqvoTextDark)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(12)
+    }
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 16) {
+            VStack(spacing: 20) {
+                // Map
                 MapRouteView(route: routeCoords)
-                    .frame(height: 300)
+                    .frame(height: 320)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
 
-                // Metrics
-                HStack(spacing: 16) {
-                    VStack(alignment: .leading) {
-                        Text("Distance")
-                            .font(.caption)
-                            .foregroundColor(.taqvoAccentText)
-                        Text(String(format: "%.2f km", activity.distanceMeters/1000.0))
-                            .font(.title3).bold()
-                    }
-                    Spacer()
-                    VStack(alignment: .trailing) {
-                        Text("Duration")
-                            .font(.caption)
-                            .foregroundColor(.taqvoAccentText)
-                        Text(ActivityTrackingViewModel.formattedDuration(activity.durationSeconds))
-                            .font(.title3).bold()
-                    }
-                }
-
-                HStack {
-                    Text("Avg Pace")
-                        .font(.caption)
-                        .foregroundColor(.taqvoAccentText)
-                    Spacer()
-                    Text(paceString)
-                        .font(.headline)
-                }
-
-                // Calories
-                HStack {
-                    Text("Calories")
-                        .font(.caption)
-                        .foregroundColor(.taqvoAccentText)
-                    Spacer()
-                    Text(String(format: "%.0f kcal", activity.caloriesKilocalories))
-                        .font(.headline)
-                }
-
-                // Optional Average Heart Rate
-                if let hr = activity.averageHeartRateBPM {
-                    HStack {
-                        Text("Avg HR")
-                            .font(.caption)
-                            .foregroundColor(.taqvoAccentText)
-                        Spacer()
-                        Text(String(format: "%.0f bpm", hr))
-                            .font(.headline)
-                    }
-                }
-
-                // Avg Speed
-                HStack {
-                    Text("Avg Speed")
-                        .font(.caption)
-                        .foregroundColor(.taqvoAccentText)
-                    Spacer()
-                    Text(avgSpeedString)
-                        .font(.headline)
-                }
-
-                // Steps
-                HStack {
-                    Text("Steps")
-                        .font(.caption)
-                        .foregroundColor(.taqvoAccentText)
-                    Spacer()
-                    Text((stepsCount ?? activity.stepsCount).map { String($0) } ?? "—")
-                        .font(.headline)
-                }
-
-                // Elevation
-                HStack {
-                    Text("Elevation")
-                        .font(.caption)
-                        .foregroundColor(.taqvoAccentText)
-                    Spacer()
-                    Text((elevationGainMeters ?? activity.elevationGainMeters).map { String(format: "%.0f m", $0) } ?? "—")
-                        .font(.headline)
-                }
-
-                // Splits
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Splits")
-                        .font(.headline)
-                    ForEach(splits.indices, id: \.self) { idx in
-                        HStack {
-                            Text("Km \(idx + 1)")
+                // Primary Metrics (Distance & Duration)
+                HStack(spacing: 12) {
+                    // Distance Card
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "location.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(Color(hex: "BDF266"))
+                            Text("Distance")
+                                .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.taqvoAccentText)
-                            Spacer()
-                            Text(ActivityTrackingViewModel.formattedDuration(splits[idx]))
-                                .font(.body).monospacedDigit()
                         }
-                        .padding(.vertical, 4)
-                    }
-                    if splits.isEmpty {
-                        Text("No splits available")
+                        Text(String(format: "%.2f", activity.distanceMeters/1000.0))
+                            .font(.system(size: 32, weight: .bold))
+                            .foregroundColor(.taqvoTextDark)
+                        Text("km")
+                            .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.taqvoAccentText)
-                            .font(.caption)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                    .background(Color.black.opacity(0.2))
+                    .cornerRadius(16)
+                    
+                    // Duration Card
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "clock.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(Color(hex: "BDF266"))
+                            Text("Duration")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.taqvoAccentText)
+                        }
+                        Text(ActivityTrackingViewModel.formattedDuration(activity.durationSeconds))
+                            .font(.system(size: 32, weight: .bold))
+                            .foregroundColor(.taqvoTextDark)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                    .background(Color.black.opacity(0.2))
+                    .cornerRadius(16)
+                }
+
+                // Secondary Metrics Grid
+                VStack(spacing: 12) {
+                    HStack(spacing: 12) {
+                        metricCard(icon: "speedometer", label: "Avg Pace", value: paceString)
+                        metricCard(icon: "flame.fill", label: "Calories", value: String(format: "%.0f kcal", activity.caloriesKilocalories))
+                    }
+                    
+                    HStack(spacing: 12) {
+                        metricCard(icon: "gauge.medium", label: "Avg Speed", value: avgSpeedString)
+                        if let hr = activity.averageHeartRateBPM {
+                            metricCard(icon: "heart.fill", label: "Avg HR", value: String(format: "%.0f bpm", hr))
+                        } else {
+                            metricCard(icon: "figure.walk", label: "Steps", value: (stepsCount ?? activity.stepsCount).map { String($0) } ?? "—")
+                        }
+                    }
+                    
+                    HStack(spacing: 12) {
+                        metricCard(icon: "figure.walk", label: "Steps", value: (stepsCount ?? activity.stepsCount).map { String($0) } ?? "—")
+                        metricCard(icon: "mountain.2.fill", label: "Elevation", value: (elevationGainMeters ?? activity.elevationGainMeters).map { String(format: "%.0f m", $0) } ?? "—")
                     }
                 }
 
+                // Splits Section
+                if !splits.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "figure.run")
+                                .font(.system(size: 18))
+                                .foregroundColor(Color(hex: "BDF266"))
+                            Text("Splits")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(.taqvoTextDark)
+                        }
+                        
+                        VStack(spacing: 8) {
+                            ForEach(splits.indices, id: \.self) { idx in
+                                HStack {
+                                    Text("Km \(idx + 1)")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.taqvoAccentText)
+                                    Spacer()
+                                    Text(ActivityTrackingViewModel.formattedDuration(splits[idx]))
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.taqvoTextDark)
+                                        .monospacedDigit()
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 12)
+                                .background(Color.black.opacity(0.1))
+                                .cornerRadius(8)
+                            }
+                        }
+                    }
+                    .padding(16)
+                    .background(Color.black.opacity(0.2))
+                    .cornerRadius(16)
+                }
+
+                // Date
                 Text(activity.endDate.formatted(date: .abbreviated, time: .shortened))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.taqvoAccentText)
-                    .font(.caption)
+                    .padding(.top, 8)
             }
-            .padding()
+            .padding(16)
+            .padding(.bottom, 80)
         }
         .navigationTitle(navigationTitleText)
         .toolbar {
