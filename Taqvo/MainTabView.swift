@@ -27,55 +27,39 @@ struct MainTabView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-        TabView(selection: $selectedTab) {
-            FeedView()
-                .tabItem {
-                    Label("Feed", systemImage: "list.bullet")
+            // Main content based on selected tab
+            Group {
+                switch selectedTab {
+                case .feed:
+                    FeedView()
+                case .community:
+                    CommunityView()
+                case .activity:
+                    ActivityView(weatherVM: weatherVM, selectedTab: $selectedTab)
+                case .insights:
+                    InsightsView()
+                case .profile:
+                    ProfileView()
                 }
-                .tag(Tab.feed)
-
-            CommunityView()
-                .tabItem {
-                    Label("Community", systemImage: "person.3")
-                }
-                .tag(Tab.community)
-
-            ActivityView(weatherVM: weatherVM)
-                .tabItem {
-                    VStack {
-                        Image(systemName: "figure.run")
-                            .symbolEffect(.pulse, options: .repeating, value: selectedTab == .activity)
-                        Text("Activity")
-                    }
-                }
-                .tag(Tab.activity)
-
-            InsightsView()
-                .tabItem {
-                    Label("Insights", systemImage: "chart.bar.fill")
-                }
-                .tag(Tab.insights)
-
-            ProfileView()
-                .tabItem {
-                    Label("Profile", systemImage: "person.crop.circle")
-                }
-                .tag(Tab.profile)
-        }
-        .onChange(of: appState.navigateToActivity) { _, go in
-            if go {
-                selectedTab = .activity
-                appState.navigateToActivity = false
             }
-        }
-        .onAppear {
-            // Load profile data globally when the main app starts
-            Task {
-                await profileService.loadCurrentUserProfile()
+            .onChange(of: appState.navigateToActivity) { _, go in
+                if go {
+                    selectedTab = .activity
+                    appState.navigateToActivity = false
+                }
             }
-        }
-        .tint(.taqvoCTA)
-        .background(Color.taqvoBackgroundDark)
+            .onAppear {
+                // Load profile data globally when the main app starts
+                Task {
+                    await profileService.loadCurrentUserProfile()
+                }
+            }
+            .background(Color.taqvoBackgroundDark)
+            
+            // Custom Floating Tab Bar (hidden on Activity tab)
+            if selectedTab != .activity {
+                floatingTabBar
+            }
         
         // Floating Music Button
         if !showMiniPlayer && (musicVM.isPlaying || spotifyVM.isPlaying) {
@@ -106,11 +90,76 @@ struct MainTabView: View {
                 .presentationDragIndicator(.visible)
         }
     }
+    
+    // MARK: - Floating Tab Bar
+    
+    private var floatingTabBar: some View {
+        HStack(spacing: 0) {
+            // Feed
+            tabBarButton(icon: "house.fill", tab: .feed)
+            
+            Spacer()
+            
+            // Community
+            tabBarButton(icon: "heart.fill", tab: .community)
+            
+            Spacer()
+            
+            // Activity (Center - Special)
+            Button {
+                selectedTab = .activity
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(Color.taqvoCTA)
+                        .frame(width: 56, height: 56)
+                        .shadow(color: Color.taqvoCTA.opacity(0.3), radius: 8, x: 0, y: 4)
+                    
+                    Image(systemName: "plus")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundColor(.black)
+                }
+            }
+            .offset(y: -10)
+            
+            Spacer()
+            
+            // Insights
+            tabBarButton(icon: "calendar", tab: .insights)
+            
+            Spacer()
+            
+            // Profile
+            tabBarButton(icon: "gearshape.fill", tab: .profile)
+        }
+        .frame(height: 60)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 30)
+                .fill(Color(red: 0.15, green: 0.15, blue: 0.15))
+                .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: -2)
+        )
+        .padding(.horizontal, 20)
+        .padding(.bottom, 0) // At bottom edge
+    }
+    
+    private func tabBarButton(icon: String, tab: Tab) -> some View {
+        Button {
+            selectedTab = tab
+        } label: {
+            Image(systemName: icon)
+                .font(.system(size: 22))
+                .foregroundColor(selectedTab == tab ? .white : .gray)
+                .frame(width: 44, height: 44)
+        }
+    }
 }
 
 struct ActivityView: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var weatherVM: WeatherViewModel
+    @Binding var selectedTab: MainTabView.Tab
     @State private var activityType: ActivityType = .run
     @State private var goal: Goal = .none
     @State private var navigateToLive: Bool = false
@@ -135,6 +184,7 @@ struct ActivityView: View {
     @State private var showPlaylistPicker: Bool = false
     @State private var showSpotifyPicker: Bool = false
     @State private var showMiniPlayer: Bool = false
+    @State private var showMusicSheet: Bool = false
     @State private var provider: MusicProvider = .spotify
 
     enum ActivityType: String, CaseIterable { 
@@ -149,94 +199,255 @@ struct ActivityView: View {
     
     private var modernActivitySetup: some View {
         VStack(spacing: 0) {
-            // Header - Compact
-            VStack(spacing: 8) {
-                Text("Ready to Move?")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundColor(.taqvoTextDark)
-                
-                // Weather info inline with subtitle
-                if let temp = weatherVM.temperatureCelsius {
-                    HStack(spacing: 6) {
-                        Image(systemName: weatherVM.weatherConditionIcon)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.taqvoCTA)
-                        
+            // Location/Weather Header
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Current Location")
+                        .font(.system(size: 15, weight: .regular))
+                        .foregroundColor(.taqvoTextDark)
+                    
+                    if let temp = weatherVM.temperatureCelsius {
                         Text(weatherVM.formattedWeatherString)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: 13))
+                            .foregroundColor(.taqvoAccentText)
+                    } else {
+                        Text("Loading weather...")
+                            .font(.system(size: 13))
                             .foregroundColor(.taqvoAccentText)
                     }
-                } else {
-                    Text("Set up your activity")
-                        .font(.system(size: 14))
-                        .foregroundColor(.taqvoAccentText)
+                }
+                
+                Spacer()
+                
+                Button {
+                    // Navigate back to Feed
+                    withAnimation {
+                        selectedTab = .feed
+                    }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.taqvoTextDark)
+                        .frame(width: 32, height: 32)
+                        .background(Color.white.opacity(0.15))
+                        .clipShape(Circle())
                 }
             }
-            .padding(.top, 20)
-            .padding(.bottom, 16)
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
                 
             // Scrollable content
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 16) {
-                    // Activity Type Cards - Compact
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Activity Type")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.taqvoAccentText)
-                            .textCase(.uppercase)
+                VStack(spacing: 20) {
+                    // Map Preview with Route
+                    mapPreview
+                        .padding(.horizontal, 16)
+                    
+                    // Activity Type - Evenly Spaced Buttons
+                    HStack(spacing: 0) {
+                        circularActivityButton(type: .walk, icon: "figure.walk", label: "Walk")
+                        Spacer()
+                        circularActivityButton(type: .run, icon: "figure.run", label: "Run")
+                        Spacer()
+                        circularActivityButton(type: .trailRun, icon: "figure.run.circle", label: "Trail Run")
+                        Spacer()
+                        circularActivityButton(type: .hiking, icon: "figure.hiking", label: "Hiking")
+                    }
+                    .padding(.horizontal, 16)
+                    
+                    // Goal Row - Compact
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Goal")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.taqvoCTA)
                         
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                            activityTypeCard(type: .walk, icon: "figure.walk", color: .blue)
-                            activityTypeCard(type: .run, icon: "figure.run", color: .red)
-                            activityTypeCard(type: .trailRun, icon: "figure.run.circle", color: .orange)
-                            activityTypeCard(type: .hiking, icon: "figure.hiking", color: .green)
+                        Button {
+                            showGoalEditSheet = true
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: goalIcon)
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.taqvoTextDark)
+                                
+                                Text(compactGoalText)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.taqvoTextDark)
+                                
+                                Spacer()
+                                
+                                Image(systemName: "pencil")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.taqvoAccentText)
+                            }
+                            .padding(16)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(12)
                         }
                     }
                     .padding(.horizontal, 16)
-                
-                    // Goal Display Card - Compact
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Your Goal")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.taqvoAccentText)
-                            .textCase(.uppercase)
-                        
-                        currentGoalDisplayCard
-                    }
-                    .padding(.horizontal, 16)
-                
-                    // Music Section - Compact
-                    VStack(alignment: .leading, spacing: 8) {
+                    
+                    // Music Row - Compact
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Music")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.taqvoAccentText)
-                            .textCase(.uppercase)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.taqvoCTA)
                         
-                        musicSelectionCard
+                        // Music Selection Button
+                        Button {
+                            showMusicSheet = true
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: provider == .apple ? "applelogo" : "play.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.taqvoTextDark)
+                                
+                                Text(musicStatusText)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.taqvoTextDark)
+                                
+                                Spacer()
+                                
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.taqvoAccentText)
+                            }
+                            .padding(16)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(12)
+                        }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
+                    
+                    // Start Button - Below Music Section
+                    VStack(spacing: 8) {
+                        Button {
+                            prepareAndStartCountdown()
+                        } label: {
+                            Text("START ACTIVITY")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.black)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 54)
+                                .background(Color.taqvoCTA)
+                                .cornerRadius(27)
+                        }
+                        
+                        Text("Ready to move?")
+                            .font(.system(size: 14))
+                            .foregroundColor(.taqvoAccentText)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 40)
                 }
+            }
+        }
+        .sheet(isPresented: $showGoalEditSheet) {
+            goalEditSheet
+        }
+        .sheet(isPresented: $showMusicSheet) {
+            musicSelectionSheet
+        }
+    }
+    
+    // MARK: - Map Preview
+    
+    private var mapPreview: some View {
+        ZStack(alignment: .topLeading) {
+            // Actual Map with user location
+            if let location = locationManager.location {
+                Map(position: .constant(.region(MKCoordinateRegion(
+                    center: location.coordinate,
+                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                )))) {
+                    Annotation("", coordinate: location.coordinate) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.taqvoCTA.opacity(0.3))
+                                .frame(width: 40, height: 40)
+                            Circle()
+                                .fill(Color.taqvoCTA)
+                                .frame(width: 16, height: 16)
+                        }
+                    }
+                }
+                .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
+                .disabled(true)
+            } else {
+                // Fallback placeholder while loading location
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.gray.opacity(0.3),
+                                Color.gray.opacity(0.2)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
             }
             
-            // Start Button - Fixed at bottom
-            Button {
-                prepareAndStartCountdown()
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 18))
-                    Text("Start Activity")
-                        .font(.system(size: 17, weight: .semibold))
-                }
-                .foregroundColor(.black)
-                .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .background(Color.taqvoCTA)
-                .cornerRadius(28)
+            // "Your Location" label
+            Text("Your Location")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.taqvoCTA)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.6))
+                .cornerRadius(8)
+                .padding(12)
+        }
+        .frame(height: 260)
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        )
+    }
+    
+    // MARK: - Circular Activity Button
+    
+    private func circularActivityButton(type: ActivityType, icon: String, label: String) -> some View {
+        let isSelected = activityType == type
+        let circleSize: CGFloat = isSelected ? 75 : 70
+        let iconSize: CGFloat = isSelected ? 30 : 26
+        let inactiveColor = Color(red: 0x77/255.0, green: 0x77/255.0, blue: 0x77/255.0)
+        
+        return Button {
+            withAnimation(.spring(response: 0.3)) {
+                activityType = type
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
+        } label: {
+            VStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(isSelected ? Color.taqvoCTA : Color.white.opacity(0.08))
+                        .frame(width: circleSize, height: circleSize)
+                    
+                    Image(systemName: icon)
+                        .font(.system(size: iconSize, weight: .medium))
+                        .foregroundColor(isSelected ? .black : inactiveColor)
+                }
+                
+                Text(label)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(isSelected ? .taqvoCTA : inactiveColor)
+            }
+        }
+    }
+    
+    // MARK: - Compact Goal Text
+    
+    private var compactGoalText: String {
+        switch goal {
+        case .none:
+            return "No goal - track freely"
+        case .distance:
+            return "Distance: \(String(format: "%.1f", distanceKilometers))km"
+        case .time:
+            return "Duration: \(timeMinutes) mins"
         }
     }
     
@@ -526,6 +737,214 @@ struct ActivityView: View {
         } else {
             return spotifyVM.currentPlaylistName.isEmpty ? "Select Playlist" : "Change Playlist"
         }
+    }
+    
+    // MARK: - Music Selection Sheet
+    
+    private var musicSelectionSheet: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                musicProviderToggle
+                musicSheetContent
+                Spacer()
+            }
+            .background(Color.taqvoBackgroundDark)
+            .navigationTitle("Select Music")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        showMusicSheet = false
+                    }
+                    .foregroundColor(.taqvoCTA)
+                }
+            }
+        }
+    }
+    
+    private var musicProviderToggle: some View {
+        HStack(spacing: 0) {
+            providerButton(provider: .apple, icon: "applelogo", label: "Apple Music")
+            providerButton(provider: .spotify, icon: "play.circle.fill", label: "Spotify")
+        }
+        .padding(4)
+        .background(Color.white.opacity(0.08))
+        .cornerRadius(10)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
+    
+    private func providerButton(provider providerType: MusicProvider, icon: String, label: String) -> some View {
+        Button {
+            withAnimation {
+                provider = providerType
+                storedProviderString = providerType.rawValue
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                Text(label)
+                    .font(.system(size: 14, weight: .medium))
+            }
+            .foregroundColor(provider == providerType ? .black : .taqvoAccentText)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(provider == providerType ? Color.taqvoCTA : Color.clear)
+            .cornerRadius(8)
+        }
+    }
+    
+    @ViewBuilder
+    private var musicSheetContent: some View {
+        if provider == .apple {
+            appleMusicContent
+        } else {
+            spotifyContent
+        }
+    }
+    
+    @ViewBuilder
+    private var appleMusicContent: some View {
+        if musicVM.isAuthorized {
+            ScrollView {
+                VStack(spacing: 12) {
+                    ForEach(musicVM.playlists, id: \.persistentID) { playlist in
+                        Button {
+                            musicVM.setQueue(playlist: playlist)
+                            showMusicSheet = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                showMiniPlayer = true
+                            }
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(playlist.name ?? "Untitled Playlist")
+                                        .font(.system(size: 16, weight: .medium))
+                                        .foregroundColor(.taqvoTextDark)
+                                    Text("\(playlist.items.count) songs")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.taqvoAccentText)
+                                }
+                                Spacer()
+                                if musicVM.currentPlaylistName == (playlist.name ?? "") {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.taqvoCTA)
+                                }
+                            }
+                            .padding(16)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(12)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .onAppear {
+                musicVM.loadPlaylists()
+            }
+        } else {
+            unauthorizedView(icon: "applelogo", title: "Apple Music Not Authorized", message: "Please authorize Apple Music in Settings")
+        }
+    }
+    
+    @ViewBuilder
+    private var spotifyContent: some View {
+        if spotifyVM.isAuthorized {
+            ScrollView {
+                VStack(spacing: 12) {
+                    ForEach(spotifyVM.playlists, id: \.id) { playlist in
+                        Button {
+                            Task {
+                                await spotifyVM.playPlaylist(playlist)
+                                showMusicSheet = false
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    showMiniPlayer = true
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(playlist.name)
+                                        .font(.system(size: 16, weight: .medium))
+                                        .foregroundColor(.taqvoTextDark)
+                                    Text("\(playlist.tracksCount) songs")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.taqvoAccentText)
+                                }
+                                Spacer()
+                                if spotifyVM.currentPlaylistName == playlist.name {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.taqvoCTA)
+                                }
+                            }
+                            .padding(16)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(12)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .onAppear {
+                Task {
+                    await spotifyVM.loadPlaylists()
+                }
+            }
+        } else {
+            spotifyUnauthorizedView
+        }
+    }
+    
+    private func unauthorizedView(icon: String, title: String, message: String) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: icon)
+                .font(.system(size: 60))
+                .foregroundColor(.taqvoAccentText)
+            
+            Text(title)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(.taqvoTextDark)
+            
+            Text(message)
+                .font(.system(size: 14))
+                .foregroundColor(.taqvoAccentText)
+                .multilineTextAlignment(.center)
+        }
+        .padding()
+    }
+    
+    private var spotifyUnauthorizedView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "play.circle.fill")
+                .font(.system(size: 60))
+                .foregroundColor(.taqvoAccentText)
+            
+            Text("Spotify Not Connected")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(.taqvoTextDark)
+            
+            Text("Connect your Spotify account to select playlists")
+                .font(.system(size: 14))
+                .foregroundColor(.taqvoAccentText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            
+            Button {
+                SpotifyAuthManager.shared.startAuthorization()
+                showMusicSheet = false
+            } label: {
+                Text("Connect Spotify")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.taqvoCTA)
+                    .cornerRadius(12)
+            }
+            .padding(.horizontal, 32)
+        }
+        .padding()
     }
     
     // MARK: - Goal Edit Sheet
@@ -3500,7 +3919,8 @@ struct CommunityView: View {
                         clubsContent
                     }
                 }
-                .padding(.vertical, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 100) // Add bottom padding to clear floating tab bar
             }
         }
     }
@@ -4198,6 +4618,10 @@ struct InsightsView: View {
     @EnvironmentObject var store: ActivityStore
     @EnvironmentObject var community: CommunityViewModel
     @State private var period: Period = .weekly
+    @State private var selectedDate = Date()
+    @State private var currentMonth = Date()
+    
+    private var profileService: ProfileService { ProfileService.shared }
 
     enum Period: String, CaseIterable { case daily, weekly, monthly }
 
@@ -4792,85 +5216,715 @@ struct InsightsView: View {
             }
         }
     }
+    
+    // MARK: - New Figma Design Sections
+    
+    private var combinedHeaderSection: some View {
+        ZStack(alignment: .top) {
+            // Blur background extending all the way to top
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    // Gradient overlay: dark at top, lighter at bottom
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            Color.black.opacity(0.8),
+                            Color.black.opacity(0.5),
+                            Color.black.opacity(0.3),
+                            Color.clear
+                        ]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .overlay(
+                    // Subtle border
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: 0,
+                        bottomLeadingRadius: 50,
+                        bottomTrailingRadius: 50,
+                        topTrailingRadius: 0
+                    )
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+                .clipShape(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: 0,
+                        bottomLeadingRadius: 50,
+                        bottomTrailingRadius: 50,
+                        topTrailingRadius: 0
+                    )
+                )
+                .padding(.top, -100) // Extend beyond the top
+            
+            VStack(spacing: 16) {
+                Spacer()
+                    .frame(height: 10)
+                
+                // Month/Year Navigation
+                HStack(spacing: 16) {
+                    Button {
+                        withAnimation {
+                            currentMonth = Calendar.current.date(byAdding: .month, value: -1, to: currentMonth) ?? currentMonth
+                        }
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 36, height: 36)
+                            .background(Color.white.opacity(0.15))
+                            .clipShape(Circle())
+                    }
+                    
+                    Spacer()
+                    
+                    Text(currentMonth, format: .dateTime.month(.wide).year())
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                    
+                    Button {
+                        withAnimation {
+                            currentMonth = Calendar.current.date(byAdding: .month, value: 1, to: currentMonth) ?? currentMonth
+                        }
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 36, height: 36)
+                            .background(Color.white.opacity(0.15))
+                            .clipShape(Circle())
+                    }
+                }
+                
+                // 7-Day Calendar
+                dayCalendarRow
+                
+                // Goals and Challenges buttons
+                HStack(spacing: 12) {
+                    Spacer()
+                    
+                    // My Goals Chip
+                    HStack(spacing: 8) {
+                        Image(systemName: "target")
+                            .font(.system(size: 16))
+                        Text("My Goals")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 21)
+                    .padding(.vertical, 12)
+                    .background(Color(hex: "#BDF266"))
+                    .cornerRadius(30)
+                    
+                    // Challenges Chip
+                    HStack(spacing: 8) {
+                        Image(systemName: "flag.fill")
+                            .font(.system(size: 16))
+                        Text("Challenges")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 21)
+                    .padding(.vertical, 12)
+                    .background(Color.white.opacity(0.15))
+                    .cornerRadius(30)
+                    
+                    Spacer()
+                }
+                .padding(.bottom, 16)
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+    
+    private var dayCalendarRow: some View {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let startDate = calendar.date(byAdding: .day, value: -7, to: today) ?? today
+        
+        return ScrollView(.horizontal, showsIndicators: false) {
+            ScrollViewReader { proxy in
+                HStack(spacing: 8) {
+                    ForEach(0..<15) { index in
+                        let date = calendar.date(byAdding: .day, value: index, to: startDate) ?? startDate
+                        let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
+                        
+                        VStack(spacing: 3) {
+                            Text(dayAbbreviation(for: date))
+                                .font(.system(size: 13))
+                                .foregroundColor(isSelected ? .black : .white)
+                            
+                            Text(date, format: .dateTime.day())
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(isSelected ? .black : .white)
+                        }
+                        .frame(width: 45, height: isSelected ? 72 : 64)
+                        .background(isSelected ? Color(hex: "#BDF266") : Color.white.opacity(0.15))
+                        .cornerRadius(isSelected ? 28 : 20)
+                        .id(index)
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                selectedDate = date
+                                proxy.scrollTo(index, anchor: .center)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 50)
+                .onAppear {
+                    if let selectedIndex = (0..<15).first(where: { index in
+                        let date = calendar.date(byAdding: .day, value: index, to: startDate) ?? startDate
+                        return calendar.isDate(date, inSameDayAs: selectedDate)
+                    }) {
+                        proxy.scrollTo(selectedIndex, anchor: .center)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func dayAbbreviation(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EE"
+        return formatter.string(from: date)
+    }
+    
+    private var monthYearNavigationSection: some View {
+        HStack(spacing: 16) {
+            Button {
+                withAnimation {
+                    currentMonth = Calendar.current.date(byAdding: .month, value: -1, to: currentMonth) ?? currentMonth
+                }
+            } label: {
+                Image(systemName: "arrow.left.circle")
+                    .font(.system(size: 21))
+                    .foregroundColor(.taqvoTextDark)
+            }
+            
+            Spacer()
+            
+            Text(currentMonth, format: .dateTime.month(.wide).year())
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.taqvoTextDark)
+            
+            Spacer()
+            
+            Button {
+                withAnimation {
+                    currentMonth = Calendar.current.date(byAdding: .month, value: 1, to: currentMonth) ?? currentMonth
+                }
+            } label: {
+                Image(systemName: "arrow.right.circle")
+                    .font(.system(size: 21))
+                    .foregroundColor(.taqvoTextDark)
+            }
+        }
+        .padding(.horizontal, 24)
+    }
+    
+    private var dayCalendarSection: some View {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: selectedDate)
+        let weekStart = calendar.date(byAdding: .day, value: -3, to: today) ?? today
+        
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(0..<7) { index in
+                    let date = calendar.date(byAdding: .day, value: index, to: weekStart) ?? weekStart
+                    let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
+                    
+                    VStack(spacing: 3) {
+                        Text(date, format: .dateTime.weekday(.abbreviated))
+                            .font(.system(size: 13))
+                            .foregroundColor(isSelected ? .black : .white)
+                            .textCase(.uppercase)
+                        
+                        Text(date, format: .dateTime.day())
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(isSelected ? .black : .white)
+                    }
+                    .frame(width: 45, height: isSelected ? 72 : 64)
+                    .background(isSelected ? Color(hex: "#BDF266") : Color.white.opacity(0.1))
+                    .cornerRadius(isSelected ? 28 : 20)
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            selectedDate = date
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+    
+    private var goalsAndChallengesSection: some View {
+        HStack(spacing: 12) {
+            // My Goals Chip
+            HStack(spacing: 8) {
+                Image(systemName: "target")
+                    .font(.system(size: 16))
+                Text("My Goals")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .foregroundColor(.black)
+            .padding(.horizontal, 21)
+            .padding(.vertical, 12)
+            .background(Color(hex: "#BDF266"))
+            .cornerRadius(30)
+            
+            // Challenges Chip
+            HStack(spacing: 8) {
+                Image(systemName: "flag.fill")
+                    .font(.system(size: 16))
+                Text("Challenges")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .foregroundColor(.taqvoTextDark)
+            .padding(.horizontal, 21)
+            .padding(.vertical, 12)
+            .background(Color.white.opacity(0.15))
+            .cornerRadius(30)
+            
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+    }
+    
+    private var overallStatusSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Overall Status")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.taqvoTextDark)
+                .padding(.horizontal, 24)
+            
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("This Week")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.taqvoTextDark)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14))
+                        .foregroundColor(.taqvoAccentText)
+                }
+                .padding(.horizontal, 16)
+                
+                // Weekly Graph
+                weeklyGraphView
+                    .frame(height: 120)
+                    .padding(.horizontal, 16)
+                
+                // Days of week
+                HStack(spacing: 0) {
+                    ForEach(0..<7) { index in
+                        let calendar = Calendar.current
+                        let today = calendar.startOfDay(for: Date())
+                        let date = calendar.date(byAdding: .day, value: -6 + index, to: today) ?? today
+                        VStack(spacing: 2) {
+                            Text(date, format: .dateTime.weekday(.abbreviated))
+                                .font(.system(size: 11))
+                                .foregroundColor(.taqvoAccentText)
+                            Text(date, format: .dateTime.day())
+                                .font(.system(size: 11))
+                                .foregroundColor(.taqvoAccentText)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .padding(.vertical, 16)
+            .background(Color(hex: "#202020"))
+            .cornerRadius(24)
+            .padding(.horizontal, 24)
+        }
+    }
+    
+    private var weeklyGraphView: some View {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let weekDays = (0..<7).compactMap { calendar.date(byAdding: .day, value: -6 + $0, to: today) }
+        
+        let weekActivities = weekDays.map { day -> Double in
+            let dayActivities = store.activities.filter { calendar.isDate($0.endDate, inSameDayAs: day) }
+            return dayActivities.reduce(0.0) { $0 + $1.distanceMeters } / 1000.0
+        }
+        
+        let maxDistance = weekActivities.max() ?? 1.0
+        
+        return GeometryReader { geometry in
+            let width = geometry.size.width
+            let height = geometry.size.height
+            let spacing = width / CGFloat(weekActivities.count - 1)
+            
+            ZStack {
+                // Line chart
+                Path { path in
+                    for (index, distance) in weekActivities.enumerated() {
+                        let x = CGFloat(index) * spacing
+                        let y = height - (CGFloat(distance / maxDistance) * height * 0.8)
+                        
+                        if index == 0 {
+                            path.move(to: CGPoint(x: x, y: y))
+                        } else {
+                            path.addLine(to: CGPoint(x: x, y: y))
+                        }
+                    }
+                }
+                .stroke(Color(hex: "#BDF266"), lineWidth: 2)
+                
+                // Dots
+                ForEach(0..<weekActivities.count, id: \.self) { index in
+                    let x = CGFloat(index) * spacing
+                    let distance = weekActivities[index]
+                    let y = height - (CGFloat(distance / maxDistance) * height * 0.8)
+                    
+                    Circle()
+                        .fill(Color(hex: "#BDF266"))
+                        .frame(width: 8, height: 8)
+                        .position(x: x, y: y)
+                }
+            }
+        }
+    }
+    
+    private var activityHistoryCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: "chart.xyaxis.line")
+                    .font(.system(size: 20))
+                    .foregroundColor(Color(hex: "#BDF266"))
+                Text("Activity History")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.taqvoTextDark)
+                Spacer()
+            }
+            
+            // Polygon chart placeholder (7-day pattern)
+            polygonChartView
+                .frame(height: 120)
+        }
+        .padding(16)
+        .background(Color(hex: "#202020"))
+        .cornerRadius(24)
+        .padding(.horizontal, 24)
+    }
+    
+    private var polygonChartView: some View {
+        PolygonChart(activities: store.activities)
+    }
+    
+    private var streakCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(Color(hex: "#BDF266"))
+                Text("Streak")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.taqvoTextDark)
+                Spacer()
+            }
+            
+            VStack(alignment: .center, spacing: 8) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 48))
+                    .foregroundColor(.orange)
+                
+                Text("\(store.activeDaysStreak()) days streak")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.taqvoTextDark)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 20)
+        }
+        .padding(16)
+        .background(Color(hex: "#202020"))
+        .cornerRadius(24)
+        .frame(maxWidth: .infinity)
+    }
+    
+    private var caloriesCard: some View {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let last7Days = (0..<7).compactMap { calendar.date(byAdding: .day, value: -6 + $0, to: today) }
+        
+        let dailyCalories = last7Days.map { day -> Double in
+            let dayActivities = store.activities.filter { calendar.isDate($0.endDate, inSameDayAs: day) }
+            return dayActivities.reduce(0.0) { $0 + $1.caloriesKilocalories }
+        }
+        
+        let maxCalories = dailyCalories.max() ?? 1.0
+        
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(Color(hex: "#BDF266"))
+                Text("Calories")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.taqvoTextDark)
+                Spacer()
+            }
+            
+            Text("\(Int(dailyCalories.reduce(0, +))) Cal")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.taqvoTextDark)
+            
+            // Bar chart
+            HStack(alignment: .bottom, spacing: 4) {
+                ForEach(0..<dailyCalories.count, id: \.self) { index in
+                    let calories = dailyCalories[index]
+                    let height = calories / maxCalories * 60
+                    
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(calories > 0 ? Color(hex: "#BDF266") : Color.gray.opacity(0.3))
+                        .frame(width: 12, height: max(height, 8))
+                }
+            }
+            .frame(height: 60)
+        }
+        .padding(16)
+        .background(Color(hex: "#202020"))
+        .cornerRadius(24)
+        .frame(maxWidth: .infinity)
+    }
+    
+    private var durationCard: some View {
+        let weekActivities = store.activities.filter { activity in
+            let calendar = Calendar.current
+            let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+            return activity.endDate >= weekAgo
+        }
+        
+        let totalDuration = weekActivities.reduce(0.0) { $0 + $1.durationSeconds }
+        let totalHours = totalDuration / 3600.0
+        
+        // Group by duration ranges
+        let durations = weekActivities.map { $0.durationSeconds / 3600.0 }
+        let shortRuns = durations.filter { $0 < 1.0 }.count
+        let mediumRuns = durations.filter { $0 >= 1.0 && $0 < 2.0 }.count
+        let longRuns = durations.filter { $0 >= 2.0 }.count
+        
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Duration")
+                        .font(.system(size: 12))
+                        .foregroundColor(.taqvoAccentText)
+                    Text(String(format: "%.1f total hours", totalHours))
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.taqvoTextDark)
+                }
+                Spacer()
+                Image(systemName: "timer")
+                    .font(.system(size: 20))
+                    .foregroundColor(Color(hex: "#BDF266"))
+            }
+            
+            // Duration bars
+            HStack(spacing: 12) {
+                if shortRuns > 0 {
+                    VStack(spacing: 4) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color(hex: "#D9F99D"))
+                            .frame(width: 6, height: 31)
+                        Text("<1.0 h")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.taqvoAccentText)
+                    }
+                }
+                
+                if mediumRuns > 0 {
+                    VStack(spacing: 4) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color(hex: "#BDF266"))
+                            .frame(width: 6, height: 44)
+                        Text("1-2 h")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.taqvoAccentText)
+                    }
+                }
+                
+                if longRuns > 0 {
+                    VStack(spacing: 4) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.white)
+                            .frame(width: 6, height: 14)
+                        Text(">2 h")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.taqvoAccentText)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(Color(hex: "#202020"))
+        .cornerRadius(24)
+    }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.taqvoBackgroundDark.ignoresSafeArea()
-                
-                let weekly: [WeeklySummary] = store.weeklySummaries()
-                let daily: [DailySummary] = store.dailySummaries()
-                let monthly: [MonthlySummary] = store.monthlySummaries()
-                let allEmpty = weekly.isEmpty && daily.isEmpty && monthly.isEmpty
+        ZStack {
+            Color.taqvoBackgroundDark.ignoresSafeArea()
+            
+            let allEmpty = store.activities.isEmpty
 
-                if allEmpty {
-                    emptyInsightsView
-                } else {
-                    ScrollView {
-                        VStack(spacing: 20) {
-                            // Stats Overview Cards
-                            statsOverviewSection
+            if allEmpty {
+                emptyInsightsView
+            } else {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Combined Header with blur background (profile, month nav, calendar, buttons)
+                        combinedHeaderSection
+                            .padding(.top, 50)
+                        
+                        // Content sections
+                        VStack(spacing: 24) {
+                            // Overall Status with Weekly Graph
+                            overallStatusSection
+                                .padding(.top, 24)
                             
-                            // Period Selector
-                            Picker("Period", selection: $period) {
-                                Text("Daily").tag(Period.daily)
-                                Text("Weekly").tag(Period.weekly)
-                                Text("Monthly").tag(Period.monthly)
+                            // Activity History Card (Polygon Chart)
+                            activityHistoryCard
+                            
+                            // Bottom Row: Streak and Calories
+                            HStack(spacing: 16) {
+                                streakCard
+                                caloriesCard
                             }
-                            .pickerStyle(.segmented)
-                            .padding(.horizontal, 16)
-
-                            // Charts Section
-                            VStack(spacing: 16) {
-                                chartCard(title: "Distance", icon: "location.fill") {
-                                    distanceChart(weekly: weekly, daily: daily, monthly: monthly)
-                                }
-                                
-                                chartCard(title: "Pace", icon: "speedometer") {
-                                    paceChart(weekly: weekly, daily: daily, monthly: monthly)
-                                }
-                                
-                                chartCard(title: "Calories", icon: "flame.fill") {
-                                    caloriesChart(weekly: weekly, daily: daily, monthly: monthly)
-                                }
-                            }
-                            .padding(.horizontal, 16)
-
-                            // Milestones
-                            modernMilestonesView()
-                                .padding(.horizontal, 16)
-
-                            // Summary List
-                            summaryList(weekly: weekly, daily: daily, monthly: monthly)
-                                .padding(.horizontal, 16)
+                            .padding(.horizontal, 24)
+                            
+                            // Duration Card
+                            durationCard
+                                .padding(.horizontal, 24)
                         }
-                        .padding(.vertical, 16)
+                        .padding(.bottom, 24)
                     }
                 }
             }
-            .navigationTitle("INSIGHTS")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                let weekly = store.weeklySummaries()
-                let daily = store.dailySummaries()
-                let monthly = store.monthlySummaries()
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 16) {
-                        Button {
-                            community.refreshProgress(from: store)
-                        } label: {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.system(size: 20))
-                                .foregroundColor(.taqvoTextDark)
-                        }
-                        ShareLink(item: exportInsightsCSV(period: period, weekly: weekly, daily: daily, monthly: monthly)) {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 20))
-                                .foregroundColor(.taqvoTextDark)
-                        }
-                    }
+        }
+        .ignoresSafeArea(edges: .top)
+    }
+}
+
+// MARK: - Helper Chart Views
+
+struct WeeklyGraphChart: View {
+    let activities: [FeedActivity]
+    
+    private var weekActivities: [Double] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let weekDays = (0..<7).compactMap { calendar.date(byAdding: .day, value: -6 + $0, to: today) }
+        
+        return weekDays.map { day -> Double in
+            let dayActivities = activities.filter { calendar.isDate($0.endDate, inSameDayAs: day) }
+            return dayActivities.reduce(0.0) { $0 + $1.distanceMeters } / 1000.0
+        }
+    }
+    
+    private var maxDistance: Double {
+        weekActivities.max() ?? 1.0
+    }
+    
+    var body: some View {
+        GeometryReader { geometry in
+            let width: CGFloat = geometry.size.width
+            let height: CGFloat = geometry.size.height
+            let spacing: CGFloat = width / CGFloat(weekActivities.count - 1)
+            
+            ZStack {
+                linePath(width: width, height: height, spacing: spacing)
+                    .stroke(Color(hex: "#BDF266"), lineWidth: 2)
+                
+                ForEach(Array(weekActivities.enumerated()), id: \.offset) { index, distance in
+                    let x: CGFloat = CGFloat(index) * spacing
+                    let y: CGFloat = height - (CGFloat(distance / maxDistance) * height * 0.8)
+                    
+                    Circle()
+                        .fill(Color(hex: "#BDF266"))
+                        .frame(width: 8, height: 8)
+                        .position(x: x, y: y)
                 }
             }
+        }
+    }
+    
+    private func linePath(width: CGFloat, height: CGFloat, spacing: CGFloat) -> Path {
+        Path { path in
+            for (index, distance) in weekActivities.enumerated() {
+                let x: CGFloat = CGFloat(index) * spacing
+                let y: CGFloat = height - (CGFloat(distance / maxDistance) * height * 0.8)
+                
+                if index == 0 {
+                    path.move(to: CGPoint(x: x, y: y))
+                } else {
+                    path.addLine(to: CGPoint(x: x, y: y))
+                }
+            }
+        }
+    }
+}
+
+struct PolygonChart: View {
+    let activities: [FeedActivity]
+    
+    private var weekActivities: [Double] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let weekDays = (0..<7).compactMap { calendar.date(byAdding: .day, value: -6 + $0, to: today) }
+        
+        return weekDays.map { day -> Double in
+            let dayActivities = activities.filter { calendar.isDate($0.endDate, inSameDayAs: day) }
+            return dayActivities.reduce(0.0) { $0 + $1.distanceMeters } / 1000.0
+        }
+    }
+    
+    private var maxDistance: Double {
+        weekActivities.max() ?? 1.0
+    }
+    
+    var body: some View {
+        GeometryReader { geometry in
+            let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
+            let radius: CGFloat = min(geometry.size.width, geometry.size.height) / 2.5
+            
+            ZStack {
+                backgroundCircles(radius: radius)
+                polygonShape(center: center, radius: radius)
+                    .fill(Color(hex: "#BDF266").opacity(0.3))
+                polygonShape(center: center, radius: radius)
+                    .stroke(Color(hex: "#BDF266"), lineWidth: 2)
+            }
+        }
+    }
+    
+    private func backgroundCircles(radius: CGFloat) -> some View {
+        ForEach([0.33, 0.66, 1.0], id: \.self) { scale in
+            Circle()
+                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                .frame(width: radius * 2 * scale, height: radius * 2 * scale)
+        }
+    }
+    
+    private func polygonShape(center: CGPoint, radius: CGFloat) -> Path {
+        Path { path in
+            for (index, distance) in weekActivities.enumerated() {
+                let angle: CGFloat = (CGFloat(index) / CGFloat(weekActivities.count)) * 2 * .pi - .pi / 2
+                let normalizedDistance: CGFloat = CGFloat(distance / maxDistance)
+                let pointRadius: CGFloat = radius * normalizedDistance
+                let x: CGFloat = center.x + cos(angle) * pointRadius
+                let y: CGFloat = center.y + sin(angle) * pointRadius
+                
+                if index == 0 {
+                    path.move(to: CGPoint(x: x, y: y))
+                } else {
+                    path.addLine(to: CGPoint(x: x, y: y))
+                }
+            }
+            path.closeSubpath()
         }
     }
 }
